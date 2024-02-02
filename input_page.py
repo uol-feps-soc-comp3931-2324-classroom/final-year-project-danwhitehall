@@ -10,10 +10,12 @@ class InputPage(QWidget):
         super().__init__()
         # set the main window
         self.MainWindow = MainWindow
+        self.window_width = self.MainWindow.width()
+        self.window_height = self.MainWindow.height()
 
         # create the layout
-        layout = QVBoxLayout()
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # layout = QBoxLayout()
+        # layout.setAlignment(Qt.AlignmentFlag.AlignVertical_Mask)
 
         # create the toolbar 
         toolbar = QToolBar()
@@ -34,14 +36,19 @@ class InputPage(QWidget):
 
         # create a label and pixmap for the big image
         self.big_image_label = QLabel(self)
+        self.big_label_width = int(3*(self.window_width)/4)
+        self.big_label_height = int(2*(self.window_height)/3)
+        self.big_image_label.setGeometry(0, 0, self.big_label_width, self.big_label_height) 
+        self.big_image_label.setStyleSheet("QLabel { border: 1px solid black; }")
         self.big_image_pixmap = QPixmap(start_big_image_path)
-        self.big_image_pixmap_resize = self.big_image_pixmap.scaled(500, 500)
+        self.big_image_pixmap_resize = self.big_image_pixmap.scaled(100,100)
         self.big_image_label.setPixmap(self.big_image_pixmap_resize)
         # add the big image to layout
-        layout.addWidget(self.big_image_label)
+        # layout.addWidget(self.big_image_label)
 
         # set layout as current layout
-        self.setLayout(layout)
+        # self.setLayout(layout)
+        self.show()
 
     # function when user wants to open file
     def open_file_button_click(self):

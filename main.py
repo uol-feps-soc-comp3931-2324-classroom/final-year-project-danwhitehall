@@ -1,5 +1,6 @@
 # imports
 import sys
+from PyQt6.QtWidgets import QToolBar
 import cv2 as cv
 import numpy as np
 from PyQt6.QtCore import Qt
@@ -91,25 +92,58 @@ class MainWindow(QMainWindow):
 
     # create a side menu for editing image
     def createSideMenu(self):
+        # create a dock widget for the side menu
         self.side_menu = QDockWidget("Side Menu")
         self.side_menu.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         self.side_menu.setMinimumWidth(200)
 
-        find_areas = QToolButton(self)
-        find_areas.setToolTip("Find areas in image")
-        find_areas.clicked.connect(self.find_areas_click)
+        # create a label for find areas button
+        toggle_areas_label = QLabel("Toggle squares")
 
-        side_grid = QGridLayout()
-        side_grid.addWidget(find_areas, 0, 0)
-        side_grid.setRowStretch(7,10)
+        # TODO: create a button for toggling squares in image
+        # create a button for finding squares in image
+        toggle_areas = QToolButton(self)
+        toggle_areas.setToolTip("Find areas in image")
+        toggle_areas.clicked.connect(self.find_areas)
+
+        # create a slider to see what areas to find
+        rectangle_area = QLabel("Minimum area for slider")
+        self.area_slider = QSlider(Qt.Orientation.Horizontal)
+        self.area_slider.setRange(0, 100)
+        self.area_slider.setValue(0)
+        self.area_slider.setTickInterval(10)
+        self.area_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        #TODO: self.area_slider.valueChanged.connect(area_slider_changed)
+
+        # create a grid layout for the side menu and add all widgets
+        self.side_grid_layout = QGridLayout()
+        self.side_grid_layout.addWidget(toggle_areas_label, 0, 0, 1, 2)
+        self.side_grid_layout.addWidget(toggle_areas, 0, 1, 1, 3)
+        self.side_grid_layout.addWidget(rectangle_area, 1, 0)
+        self.side_grid_layout.addWidget(self.area_slider, 2, 0, 1, 0)
+        self.side_grid_layout.setRowStretch(7,10)
     
         container = QWidget()
-        container.setLayout(side_grid)
+        container.setLayout(self.side_grid_layout)
 
         self.side_menu.setWidget(container)
 
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.side_menu)
 
+    def area_slider_changed(self, value):
+        print(value)
+        #TODO: implement function where the squares get updates based on slider change
+        
+    def reset_area_slider(self):
+        self.area_slider.setValue(0)
+
+
+
+    def update_area_slider(self):
+        self.area_slider.setRange(0, int(self.max_index))
+        self.area_slider.setTickInterval(int((self.max_index)/10))
+        self.side_grid_layout.addWidget(self.area_slider, 2, 0, 1, 0)
+        print("1")
 
 
     # function when user wants to open file
@@ -130,11 +164,21 @@ class MainWindow(QMainWindow):
             self.big_image_label.setPixmap(QPixmap().fromImage(self.big_image_label.image))
             self.big_image_label.resize(self.big_image_label.pixmap().size())
          
+            # reset the squares slider 
+            self.reset_area_slider()
+
+            # find squares for the image
+            self.find_areas()
+
+            # update the squares slider
+            self.update_area_slider()
+            
         # if the user didn't select a file then print this
         else:
             print("User called file dialog")
 
-    def find_areas_click(self):
+    # fucntion that find largest and most suitable areas in image
+    def find_areas(self):
         if not self.big_image_label.image.isNull():
             img = cv.imread(self.image_path)
             gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
@@ -144,51 +188,47 @@ class MainWindow(QMainWindow):
             sharpen = cv.filter2D(blur, -1, sharpen_kernel)
 
             canny = cv.Canny(sharpen, 0, 255, 500)
-            contours, _ = cv.findContours(canny, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-            
-            areas = []
-            for cnt in contours:
-                area = cv.contourArea(cnt)
-                areas.append(area)
-            
-            print(areas)
-            max_index = np.argmax(areas)
-            x, y, w, h = cv.boundingRect(contours[max_index])
-            roi = img[y : y + h , x : x + w]
-            cv.imshow('ROI',roi)
+            # cv.imshow('canny', canny)
             
 
-            cv.imshow('canny', canny)
-
-
-            # Threshold and morph close
-            thresh = cv.threshold(sharpen, 160, 255, cv.THRESH_BINARY_INV)[1]
-            kernel = cv.getStructuringElement(cv.MORPH_RECT, (3,3))
-            close = cv.morphologyEx(thresh, cv.MORPH_CLOSE, kernel, iterations=2)
-
-            # Find contours and filter using threshold area
-            cnts = cv.findContours(close, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-            cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-
-            min_area = 100
-            max_area = 1500
-            image_number = 0
-            for c in cnts:
-                area = cv.contourArea(c)
-                print(area)
-                if area > min_area and area < max_area:
-                    x,y,w,h = cv.boundingRect(c)
-                    ROI = img[y:y+h, x:x+w]
-                    cv.imwrite('ROI_{}.png'.format(image_number), ROI)
-                    cv.rectangle(img, (x, y), (x + w, y + h), (36,255,12), 2)
-                    image_number += 1
-
-            # cv.imshow('sharpen', sharpen)
-            # cv.imshow('close', close)
+            ret, thresh = cv.threshold(gray, 127, 255, 0)
             # cv.imshow('thresh', thresh)
-            # cv.imshow('image', img)
-            # cv.waitKey()
-            print(image_number)
+            
+            # can do either canny or threshhold for contours
+            # but I prefer to use canny as there are more larger rectangles
+            canny_contours, hierarchy = cv.findContours(canny, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+            thresh_contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+            
+            # TODO: draw rectangles based on slider bar
+            self.areas = []
+            for cnt in canny_contours: 
+                area = cv.contourArea(cnt)
+                if area > int(self.area_slider.value()):
+                    self.areas.append(area)
+                    x,y,w,h = cv.boundingRect(cnt)
+                    cv.rectangle(img, (x,y), (x+w, y+h), (0,255,0), 2)
+            cv.imshow('image with rectangles', img)
+            # print(areas)
+            # self.sorted_areas = np.sort(areas)
+            # x,y,w,h = cv.boundingRect(canny_contours[0])
+            
+            # sorted_areas = sorted(areas, reverse=True, key = lambda x:x[0])
+            #TODO: add a button where user choses how many places to find
+            # this means the user can select all of the images if it is hard to find
+            # for i in range(8):    # change from 8 to user input
+                # x,y,w,h = cv.boundingRect(sorted_areas[i][1])
+                # cv.rectangle(img, (x,y), (x+w, y+h), (0,255,0), 2)
+            
+            # cv.imshow('image with rectangles', img)
+            self.max_index = np.argmax(self.areas)
+            
+            # x, y, w, h = cv.boundingRect(contours[max_index])
+            # roi = img[y : y + h , x : x + w]
+            # cv.imshow('ROI',roi)
+            
+
+            # cv.imshow('canny', canny)
+
 
             # canny = cv.Canny(bilatBlur, 0, 255, 500)
 
@@ -198,6 +238,8 @@ class MainWindow(QMainWindow):
             # self.big_image_label.setPixmap(QPixmap().fromImage(self.big_image_label.image))
             # self.big_image_label.resize(self.big_image_label.pixmap().size())
 
+            # TODO: draw rectangles based on slider bar
+            # TODO: save the image in a pixmap so it can be displayed
 
 
 

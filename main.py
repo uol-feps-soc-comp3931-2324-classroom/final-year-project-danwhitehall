@@ -140,8 +140,8 @@ class MainWindow(QMainWindow):
 
 
     def update_area_slider(self):
-        self.area_slider.setRange(0, int(self.max_index))
-        self.area_slider.setTickInterval(int((self.max_index)/10))
+        self.area_slider.setRange(0, int(self.max_value)-1)
+        self.area_slider.setTickInterval(int((self.max_value)/10))
         self.side_grid_layout.addWidget(self.area_slider, 2, 0, 1, 0)
         print("1")
 
@@ -187,59 +187,42 @@ class MainWindow(QMainWindow):
             sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
             sharpen = cv.filter2D(blur, -1, sharpen_kernel)
 
-            canny = cv.Canny(sharpen, 0, 255, 500)
-            # cv.imshow('canny', canny)
-            
+            canny = cv.Canny(sharpen, 0, 255, 500)            
 
             ret, thresh = cv.threshold(gray, 127, 255, 0)
-            # cv.imshow('thresh', thresh)
             
             # can do either canny or threshhold for contours
             # but I prefer to use canny as there are more larger rectangles
-            canny_contours, hierarchy = cv.findContours(canny, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+            contours, hierarchy = cv.findContours(canny, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
             thresh_contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
             
-            # TODO: draw rectangles based on slider bar
+            # draw rectangles based on slider bar
             self.areas = []
-            for cnt in canny_contours: 
-                area = cv.contourArea(cnt)
+            for cnt in contours: 
+                x,y,w,h = cv.boundingRect(cnt)
+                area = w*h
+                # area = cv.contourArea(cnt)
                 if area > int(self.area_slider.value()):
                     self.areas.append(area)
-                    x,y,w,h = cv.boundingRect(cnt)
+                    # x,y,w,h = cv.boundingRect(cnt)
                     cv.rectangle(img, (x,y), (x+w, y+h), (0,255,0), 2)
             cv.imshow('image with rectangles', img)
-            # print(areas)
-            # self.sorted_areas = np.sort(areas)
-            # x,y,w,h = cv.boundingRect(canny_contours[0])
             
-            # sorted_areas = sorted(areas, reverse=True, key = lambda x:x[0])
-            #TODO: add a button where user choses how many places to find
-            # this means the user can select all of the images if it is hard to find
-            # for i in range(8):    # change from 8 to user input
-                # x,y,w,h = cv.boundingRect(sorted_areas[i][1])
-                # cv.rectangle(img, (x,y), (x+w, y+h), (0,255,0), 2)
-            
-            # cv.imshow('image with rectangles', img)
             self.max_index = np.argmax(self.areas)
+            self.max_value = self.areas[self.max_index]
             
+            # TODO: add region of interest based on what region the user choses
             # x, y, w, h = cv.boundingRect(contours[max_index])
             # roi = img[y : y + h , x : x + w]
             # cv.imshow('ROI',roi)
-            
 
-            # cv.imshow('canny', canny)
-
-
-            # canny = cv.Canny(bilatBlur, 0, 255, 500)
-
+            # TODO: save the image in a pixmap so it can be displayed
             # height, width, channel = canny.shape
             # bytes_per_line = width*channel
             # self.big_image_label.image = QImage(canny.data, width, height, bytes_per_line, QImage.Format.Format_Grayscale8)
             # self.big_image_label.setPixmap(QPixmap().fromImage(self.big_image_label.image))
             # self.big_image_label.resize(self.big_image_label.pixmap().size())
 
-            # TODO: draw rectangles based on slider bar
-            # TODO: save the image in a pixmap so it can be displayed
 
 
 

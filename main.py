@@ -36,9 +36,11 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(300,200)
         self.setWindowTitle("Data acquisition pipeline")
         self.showMaximized()
+
     
-    # create label for image
+   # create label for image
     def createImageLabel(self):
+
         self.big_image_label = QLabel(self)
         self.big_image_label.image = QImage()
         self.big_image_label.original_image = self.big_image_label.image
@@ -161,9 +163,9 @@ class MainWindow(QMainWindow):
 
             # set whats in big image to the selected file
             self.big_image_label.image = QImage(self.image_path)
-            self.big_image_label.setPixmap(QPixmap().fromImage(self.big_image_label.image))
-            self.big_image_label.resize(self.big_image_label.pixmap().size())
-         
+            pixmap = QPixmap().fromImage(self.big_image_label.image)
+            self.big_image_label.setPixmap(pixmap)
+           
             # reset the squares slider 
             self.reset_area_slider()
 
@@ -180,8 +182,8 @@ class MainWindow(QMainWindow):
     # fucntion that find largest and most suitable areas in image
     def find_areas(self):
         if not self.big_image_label.image.isNull():
-            img = cv.imread(self.image_path)
-            gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+            self.img = cv.imread(self.image_path)
+            gray = cv.cvtColor(self.img, cv.COLOR_BGR2GRAY)
             blur = cv.medianBlur(gray, 5)
 
             sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
@@ -203,25 +205,34 @@ class MainWindow(QMainWindow):
                 area = w*h
                 # area = cv.contourArea(cnt)
                 if area > int(self.area_slider.value()):
+                    rect = cv.minAreaRect(cnt)
+                    box = cv.boxPoints(rect)
+                    box = np.int0(box)
+                    cv.drawContours(self.img, [box], 0, (0,0,255), 2)
                     self.areas.append(area)
-                    # x,y,w,h = cv.boundingRect(cnt)
-                    cv.rectangle(img, (x,y), (x+w, y+h), (0,255,0), 2)
-            cv.imshow('image with rectangles', img)
+                    cv.rectangle(self.img, (x,y), (x+w, y+h), (0,255,0), 2)
+            # cv.imshow('image with rectangles', self.img)
             
             self.max_index = np.argmax(self.areas)
             self.max_value = self.areas[self.max_index]
+
+            self.save_image_pixmap()
             
             # TODO: add region of interest based on what region the user choses
             # x, y, w, h = cv.boundingRect(contours[max_index])
             # roi = img[y : y + h , x : x + w]
             # cv.imshow('ROI',roi)
 
-            # TODO: save the image in a pixmap so it can be displayed
-            # height, width, channel = canny.shape
-            # bytes_per_line = width*channel
-            # self.big_image_label.image = QImage(canny.data, width, height, bytes_per_line, QImage.Format.Format_Grayscale8)
-            # self.big_image_label.setPixmap(QPixmap().fromImage(self.big_image_label.image))
-            # self.big_image_label.resize(self.big_image_label.pixmap().size())
+    # TODO: save the image in a pixmap so it can be displayed
+    def save_image_pixmap(self):
+        height, width, channel = self.img.shape
+        bytesPerLine = 3 * width
+        self.big_image_label.image = QImage(self.img.data, width, height, bytesPerLine, QImage.Format.Format_RGB888)
+        pixmap = QPixmap().fromImage(self.big_image_label.image)
+        resized_pixmap = pixmap.scaled(self.scroll_area.size(), Qt.AspectRatioMode.KeepAspectRatio)
+        self.big_image_label.setPixmap(resized_pixmap)
+        self.big_image_label.resize(self.big_image_label.pixmap().size())
+
 
 
 

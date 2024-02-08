@@ -105,8 +105,8 @@ class MainWindow(QMainWindow):
         # TODO: create a button for toggling squares in image
         # create a button for finding squares in image
         toggle_areas = QToolButton(self)
-        toggle_areas.setToolTip("Find areas in image")
-        toggle_areas.clicked.connect(self.find_areas)
+        toggle_areas.setToolTip("Toggle squares in image")
+        toggle_areas.clicked.connect(self.toggle_squares_pressed)
 
         # create a slider to see what areas to find
         rectangle_area = QLabel("Minimum area for slider")
@@ -115,7 +115,7 @@ class MainWindow(QMainWindow):
         self.area_slider.setValue(0)
         self.area_slider.setTickInterval(10)
         self.area_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        #TODO: self.area_slider.valueChanged.connect(area_slider_changed)
+        self.area_slider.valueChanged.connect(self.find_areas)
 
         # create a grid layout for the side menu and add all widgets
         self.side_grid_layout = QGridLayout()
@@ -150,6 +150,7 @@ class MainWindow(QMainWindow):
 
     # function when user wants to open file
     def open_file_button_click(self):
+        self.squares_pressed_count = 0
         # create a file dialog
         dialog = QFileDialog()
         dialog.setNameFilter("All images (*.png *.jpg *jpeg *.tif *.tiff)")
@@ -163,8 +164,16 @@ class MainWindow(QMainWindow):
 
             # set whats in big image to the selected file
             self.big_image_label.image = QImage(self.image_path)
-            pixmap = QPixmap().fromImage(self.big_image_label.image)
-            self.big_image_label.setPixmap(pixmap)
+            self.big_image_label.original_image = self.big_image_label.image
+
+            # pixmap = QPixmap().fromImage(self.big_image_label.image)
+            # self.big_image_label.setPixmap(pixmap)
+            self.save_original_image_pixmap()
+            # pixmap = QPixmap().fromImage(self.big_image_label.image)
+            # resized_pixmap = pixmap.scaled(self.scroll_area.size(), Qt.AspectRatioMode.KeepAspectRatio)
+            # self.big_image_label.setPixmap(resized_pixmap)
+            # self.big_image_label.resize(self.big_image_label.pixmap().size())
+
            
             # reset the squares slider 
             self.reset_area_slider()
@@ -173,7 +182,7 @@ class MainWindow(QMainWindow):
             self.find_areas()
 
             # update the squares slider
-            self.update_area_slider()
+            # self.update_area_slider()
             
         # if the user didn't select a file then print this
         else:
@@ -211,20 +220,23 @@ class MainWindow(QMainWindow):
                     cv.drawContours(self.img, [box], 0, (0,0,255), 2)
                     self.areas.append(area)
                     cv.rectangle(self.img, (x,y), (x+w, y+h), (0,255,0), 2)
-            # cv.imshow('image with rectangles', self.img)
             
             self.max_index = np.argmax(self.areas)
             self.max_value = self.areas[self.max_index]
 
-            self.save_image_pixmap()
+            # update slider in real time if user has selected squares
+            if self.squares_pressed_count % 2 == 1: 
+                self.save_cv_image_pixmap()
             
             # TODO: add region of interest based on what region the user choses
             # x, y, w, h = cv.boundingRect(contours[max_index])
             # roi = img[y : y + h , x : x + w]
             # cv.imshow('ROI',roi)
 
-    # TODO: save the image in a pixmap so it can be displayed
-    def save_image_pixmap(self):
+            self.update_area_slider()
+    
+    # display cv image with rectangles shown
+    def save_cv_image_pixmap(self):
         height, width, channel = self.img.shape
         bytesPerLine = 3 * width
         self.big_image_label.image = QImage(self.img.data, width, height, bytesPerLine, QImage.Format.Format_RGB888)
@@ -232,8 +244,27 @@ class MainWindow(QMainWindow):
         resized_pixmap = pixmap.scaled(self.scroll_area.size(), Qt.AspectRatioMode.KeepAspectRatio)
         self.big_image_label.setPixmap(resized_pixmap)
         self.big_image_label.resize(self.big_image_label.pixmap().size())
+    
+    # display original image with no rectangles shown
+    def save_original_image_pixmap(self):
+        pixmap = QPixmap().fromImage(self.big_image_label.original_image)
+        resized_pixmap = pixmap.scaled(self.scroll_area.size(), Qt.AspectRatioMode.KeepAspectRatio)
+        self.big_image_label.setPixmap(resized_pixmap)
+        self.big_image_label.resize(self.big_image_label.pixmap().size())
 
 
+    # toggle screen to show squares on and off        
+    def toggle_squares_pressed(self):
+        if not self.big_image_label.image.isNull():
+            self.squares_pressed_count += 1
+            if self.squares_pressed_count % 2 == 0:
+                # self.reset_area_slider()
+                self.save_original_image_pixmap()
+            else:
+                self.save_cv_image_pixmap()
+
+        
+    
 
 
 

@@ -10,7 +10,6 @@ from PyQt6.QtGui import QPixmap, QAction, QIcon, QImage, QPalette
 from file_info import fileInfo
 
 
-
 # main window class
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -30,6 +29,7 @@ class MainWindow(QMainWindow):
         # show window
         self.show()
 
+
     # set properties of main window
     def setProperties(self):
         self.setStyleSheet("QMainWindow#main { background-color: #CDD3D5; }")
@@ -37,7 +37,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Data acquisition pipeline")
         self.showMaximized()
 
-    
+
    # create label for image
     def createImageLabel(self):
 
@@ -76,6 +76,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self.open_file)
         file_menu.addAction(self.save_file)
 
+
     # create toolbar below information bar
     def createToolBar(self):
         toolbar = QToolBar()
@@ -102,8 +103,7 @@ class MainWindow(QMainWindow):
         # create a label for find areas button
         toggle_areas_label = QLabel("Toggle squares")
 
-        # TODO: create a button for toggling squares in image
-        # create a button for finding squares in image
+        # create a button for toggling squares in image
         toggle_areas = QToolButton(self)
         toggle_areas.setToolTip("Toggle squares in image")
         toggle_areas.clicked.connect(self.toggle_squares_pressed)
@@ -117,12 +117,22 @@ class MainWindow(QMainWindow):
         self.area_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.area_slider.valueChanged.connect(self.find_areas)
 
+        # create a label for random region button
+        random_region_label = QLabel("Generate random region")
+
+        # create a button for finding random region
+        random_region_button = QToolButton(self)
+        random_region_button.setToolTip("Toggle squares in image")
+        random_region_button.clicked.connect(self.find_random_region)
+
         # create a grid layout for the side menu and add all widgets
         self.side_grid_layout = QGridLayout()
         self.side_grid_layout.addWidget(toggle_areas_label, 0, 0, 1, 2)
         self.side_grid_layout.addWidget(toggle_areas, 0, 1, 1, 3)
         self.side_grid_layout.addWidget(rectangle_area, 1, 0)
         self.side_grid_layout.addWidget(self.area_slider, 2, 0, 1, 0)
+        self.side_grid_layout.addWidget(random_region_label, 3, 0, 1, 2)
+        self.side_grid_layout.addWidget(random_region_button, 3, 1, 1, 3)
         self.side_grid_layout.setRowStretch(7,10)
     
         container = QWidget()
@@ -132,20 +142,15 @@ class MainWindow(QMainWindow):
 
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.side_menu)
 
-    def area_slider_changed(self, value):
-        print(value)
-        #TODO: implement function where the squares get updates based on slider change
         
     def reset_area_slider(self):
         self.area_slider.setValue(0)
-
 
 
     def update_area_slider(self):
         self.area_slider.setRange(0, int(self.max_value)-1)
         self.area_slider.setTickInterval(int((self.max_value)/10))
         self.side_grid_layout.addWidget(self.area_slider, 2, 0, 1, 0)
-        print("1")
 
 
     # function when user wants to open file
@@ -166,27 +171,18 @@ class MainWindow(QMainWindow):
             self.big_image_label.image = QImage(self.image_path)
             self.big_image_label.original_image = self.big_image_label.image
 
-            # pixmap = QPixmap().fromImage(self.big_image_label.image)
-            # self.big_image_label.setPixmap(pixmap)
             self.save_original_image_pixmap()
-            # pixmap = QPixmap().fromImage(self.big_image_label.image)
-            # resized_pixmap = pixmap.scaled(self.scroll_area.size(), Qt.AspectRatioMode.KeepAspectRatio)
-            # self.big_image_label.setPixmap(resized_pixmap)
-            # self.big_image_label.resize(self.big_image_label.pixmap().size())
-
-           
+       
             # reset the squares slider 
             self.reset_area_slider()
 
             # find squares for the image
             self.find_areas()
-
-            # update the squares slider
-            # self.update_area_slider()
             
         # if the user didn't select a file then print this
         else:
             print("User called file dialog")
+
 
     # fucntion that find largest and most suitable areas in image
     def find_areas(self):
@@ -204,12 +200,13 @@ class MainWindow(QMainWindow):
             
             # can do either canny or threshhold for contours
             # but I prefer to use canny as there are more larger rectangles
-            contours, hierarchy = cv.findContours(canny, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+            self.contours, hierarchy = cv.findContours(canny, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
             thresh_contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
             
             # draw rectangles based on slider bar
             self.areas = []
-            for cnt in contours: 
+            self.coordinates = []
+            for cnt in self.contours: 
                 x,y,w,h = cv.boundingRect(cnt)
                 area = w*h
                 # area = cv.contourArea(cnt)
@@ -219,7 +216,12 @@ class MainWindow(QMainWindow):
                     box = np.int0(box)
                     cv.drawContours(self.img, [box], 0, (0,0,255), 2)
                     self.areas.append(area)
+                    coord = [x,y,w,h]
+                    self.coordinates.append(coord)
                     cv.rectangle(self.img, (x,y), (x+w, y+h), (0,255,0), 2)
+            
+            if len(self.coordinates) < 20:
+                print(self.coordinates)
             
             self.max_index = np.argmax(self.areas)
             self.max_value = self.areas[self.max_index]
@@ -227,14 +229,24 @@ class MainWindow(QMainWindow):
             # update slider in real time if user has selected squares
             if self.squares_pressed_count % 2 == 1: 
                 self.save_cv_image_pixmap()
-            
-            # TODO: add region of interest based on what region the user choses
-            # x, y, w, h = cv.boundingRect(contours[max_index])
-            # roi = img[y : y + h , x : x + w]
-            # cv.imshow('ROI',roi)
-
             self.update_area_slider()
     
+    # TODO: add region of interest based on what region the user choses
+            
+            
+    # function to find a random region of interest
+    def find_random_region(self):
+        self.regions = []
+        if (len(self.coordinates) > 0):
+            for i in range(len(self.coordinates)):
+                roi = self.img[self.coordinates[i][1] : self.coordinates[i][1] + self.coordinates[i][3] , self.coordinates[i][0] : self.coordinates[i][0] + self.coordinates[i][2]]
+                self.regions.append(roi)
+
+            random_index = np.random.randint(0, len(self.regions))
+            #TODO: add a new window to show the random region of interest
+            cv.imshow('Random region', self.regions[random_index])
+
+
     # display cv image with rectangles shown
     def save_cv_image_pixmap(self):
         height, width, channel = self.img.shape
@@ -244,6 +256,7 @@ class MainWindow(QMainWindow):
         resized_pixmap = pixmap.scaled(self.scroll_area.size(), Qt.AspectRatioMode.KeepAspectRatio)
         self.big_image_label.setPixmap(resized_pixmap)
         self.big_image_label.resize(self.big_image_label.pixmap().size())
+    
     
     # display original image with no rectangles shown
     def save_original_image_pixmap(self):
@@ -262,18 +275,6 @@ class MainWindow(QMainWindow):
                 self.save_original_image_pixmap()
             else:
                 self.save_cv_image_pixmap()
-
-        
-    
-
-
-
-            
-            
-
-
-
-
 
 
 # main

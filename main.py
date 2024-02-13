@@ -318,14 +318,23 @@ class MainWindow(QMainWindow):
         self.zoom_factor *= 0.9
         self.zoom_image()
 
-    
+    # old version of zooming in and out
     # function that zooms image depending on if its in or out
+    # def zoom_image(self):
+    #     pixmap = self.big_image_label.pixmap()
+    #     resized_pixmap = pixmap.scaled(self.scroll_area.size() * self.zoom_factor, Qt.AspectRatioMode.KeepAspectRatio)
+    #     self.big_image_label.setPixmap(resized_pixmap)
+    #     self.big_image_label.setPixmap(self.big_image_label.pixmap())
+    #     self.big_image_label.resize(self.big_image_label.pixmap().size())
+        
+
+    # new version of zooming in and out
     def zoom_image(self):
-        pixmap = self.big_image_label.pixmap()
-        resized_pixmap = pixmap.scaled(self.scroll_area.size() * self.zoom_factor, Qt.AspectRatioMode.KeepAspectRatio)
-        self.big_image_label.setPixmap(resized_pixmap)
-        self.big_image_label.setPixmap(self.big_image_label.pixmap())
-        self.big_image_label.resize(self.big_image_label.pixmap().size())
+        if not self.big_image_label.image.isNull():
+            if self.squares_pressed_count % 2 == 0:
+                self.save_original_image_pixmap()
+            else:
+                self.save_cv_image_pixmap()
 
 
     # function to get position of where user pressed and show this square

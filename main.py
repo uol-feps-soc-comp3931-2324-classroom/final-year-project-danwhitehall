@@ -345,7 +345,8 @@ class MainWindow(QMainWindow):
     #TODO: add way to use scroll to zoom in out
     #TODO: add minimap
     #TODO: click on rectangle and this goes full screen.
-    #TODO: finish top and side menu            
+    #TODO: finish top and side menu    
+    #TODO: fix issue where when zooming the image gets blurry and pixelated        
 
     
 

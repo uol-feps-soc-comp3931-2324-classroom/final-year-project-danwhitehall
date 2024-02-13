@@ -36,11 +36,11 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(300,200)
         self.setWindowTitle("Data acquisition pipeline")
         self.showMaximized()
+        self.zoom_factor = 1.0
 
 
    # create label for image
     def createImageLabel(self):
-
         self.big_image_label = QLabel(self)
         self.big_image_label.image = QImage()
         self.big_image_label.original_image = self.big_image_label.image
@@ -86,8 +86,17 @@ class MainWindow(QMainWindow):
         open_file_button = QAction("Open File", self)
         open_file_button.setStatusTip("Open a file")
         open_file_button.triggered.connect(self.open_file_button_click)
-        open_file_button.setCheckable(True)
         toolbar.addAction(open_file_button)
+
+        zoom_in_button = QAction("Zoom In", self)
+        zoom_in_button.setStatusTip("Zoom in")
+        zoom_in_button.triggered.connect(self.zoom_in_button_click)
+        toolbar.addAction(zoom_in_button)
+
+        zoom_out_button = QAction("Zoom Out", self)
+        zoom_out_button.setStatusTip("Zoom out")
+        zoom_out_button.triggered.connect(self.zoom_out_button_click)
+        toolbar.addAction(zoom_out_button)
 
         # set the status bar
         self.setStatusBar(QStatusBar(self))
@@ -220,9 +229,6 @@ class MainWindow(QMainWindow):
                     self.coordinates.append(coord)
                     cv.rectangle(self.img, (x,y), (x+w, y+h), (0,255,0), 2)
             
-            if len(self.coordinates) < 20:
-                print(self.coordinates)
-            
             self.max_index = np.argmax(self.areas)
             self.max_value = self.areas[self.max_index]
 
@@ -233,7 +239,7 @@ class MainWindow(QMainWindow):
     
     # TODO: add region of interest based on what region the user choses
             
-            
+
     # function to find a random region of interest
     def find_random_region(self):
         self.regions = []
@@ -253,15 +259,16 @@ class MainWindow(QMainWindow):
         bytesPerLine = 3 * width
         self.big_image_label.image = QImage(self.img.data, width, height, bytesPerLine, QImage.Format.Format_RGB888)
         pixmap = QPixmap().fromImage(self.big_image_label.image)
-        resized_pixmap = pixmap.scaled(self.scroll_area.size(), Qt.AspectRatioMode.KeepAspectRatio)
+        resized_pixmap = pixmap.scaled(self.scroll_area.size() * self.zoom_factor, Qt.AspectRatioMode.KeepAspectRatio)
         self.big_image_label.setPixmap(resized_pixmap)
         self.big_image_label.resize(self.big_image_label.pixmap().size())
+
     
     
     # display original image with no rectangles shown
     def save_original_image_pixmap(self):
         pixmap = QPixmap().fromImage(self.big_image_label.original_image)
-        resized_pixmap = pixmap.scaled(self.scroll_area.size(), Qt.AspectRatioMode.KeepAspectRatio)
+        resized_pixmap = pixmap.scaled(self.scroll_area.size() * self.zoom_factor, Qt.AspectRatioMode.KeepAspectRatio)
         self.big_image_label.setPixmap(resized_pixmap)
         self.big_image_label.resize(self.big_image_label.pixmap().size())
 
@@ -276,6 +283,30 @@ class MainWindow(QMainWindow):
             else:
                 self.save_cv_image_pixmap()
 
+    
+    def zoom_in_button_click(self):
+        self.zoom_factor *= 1.1
+        self.zoom_image()
+
+
+    def zoom_out_button_click(self):
+        self.zoom_factor *= 0.9
+        self.zoom_image()
+
+    
+    def zoom_image(self):
+        pixmap = self.big_image_label.pixmap()
+        resized_pixmap = pixmap.scaled(self.scroll_area.size() * self.zoom_factor, Qt.AspectRatioMode.KeepAspectRatio)
+        self.big_image_label.setPixmap(resized_pixmap)
+        self.big_image_label.setPixmap(self.big_image_label.pixmap())
+        self.big_image_label.resize(self.big_image_label.pixmap().size())
+
+    #TODO: add way to zoom in and out of image
+    #TODO: add minimap
+    #TODO: click on rectangle and this goes full screen.
+    #TODO: finish top and side menu            
+
+    
 
 # main
 if __name__ == '__main__':

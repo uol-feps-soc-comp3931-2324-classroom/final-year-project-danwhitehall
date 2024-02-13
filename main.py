@@ -37,6 +37,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Data acquisition pipeline")
         self.showMaximized()
         self.zoom_factor = 1.0
+        self.select_region_checked = False
+        self.regions = []
 
 
    # create label for image
@@ -59,6 +61,8 @@ class MainWindow(QMainWindow):
         self.scroll_area.setWidget(self.big_image_label)
 
         self.setCentralWidget(self.scroll_area)
+
+        self.big_image_label.mousePressEvent = self.get_pixel
 
         
     # create the information bar at top of window
@@ -134,6 +138,11 @@ class MainWindow(QMainWindow):
         random_region_button.setToolTip("Toggle squares in image")
         random_region_button.clicked.connect(self.find_random_region)
 
+        # create a checkbox for being able to select region
+        self.select_checkbox = QCheckBox()
+        self.select_checkbox.setText("Select region")
+        self.select_checkbox.stateChanged.connect(self.toggle_select_region)
+        
         # create a grid layout for the side menu and add all widgets
         self.side_grid_layout = QGridLayout()
         self.side_grid_layout.addWidget(toggle_areas_label, 0, 0, 1, 2)
@@ -142,6 +151,7 @@ class MainWindow(QMainWindow):
         self.side_grid_layout.addWidget(self.area_slider, 2, 0, 1, 0)
         self.side_grid_layout.addWidget(random_region_label, 3, 0, 1, 2)
         self.side_grid_layout.addWidget(random_region_button, 3, 1, 1, 3)
+        self.side_grid_layout.addWidget(self.select_checkbox, 4, 0, 1, 2)
         self.side_grid_layout.setRowStretch(7,10)
     
         container = QWidget()
@@ -150,6 +160,15 @@ class MainWindow(QMainWindow):
         self.side_menu.setWidget(container)
 
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.side_menu)
+
+
+    def toggle_select_region(self):
+        if self.select_checkbox.isChecked():
+            self.select_region_checked = True
+            # self.big_image_label.setMouseTracking(True)
+        else:
+            self.select_region_checked = False
+            # self.big_image_label.setMouseTracking(False)
 
         
     def reset_area_slider(self):
@@ -197,6 +216,9 @@ class MainWindow(QMainWindow):
     def find_areas(self):
         if not self.big_image_label.image.isNull():
             self.img = cv.imread(self.image_path)
+            height, width, channel = self.img.shape
+            self.cv_width = width
+            self.cv_height = height
             gray = cv.cvtColor(self.img, cv.COLOR_BGR2GRAY)
             blur = cv.medianBlur(gray, 5)
 
@@ -236,21 +258,22 @@ class MainWindow(QMainWindow):
             if self.squares_pressed_count % 2 == 1: 
                 self.save_cv_image_pixmap()
             self.update_area_slider()
-    
-    # TODO: add region of interest based on what region the user choses
-            
+                
 
     # function to find a random region of interest
     def find_random_region(self):
-        self.regions = []
+        self.find_all_regions()
+        random_index = np.random.randint(0, len(self.regions))
+        #TODO: add a new window to show the random region of interest
+        cv.imshow('Random region', self.regions[random_index])
+
+
+    # function that gets all regions of interest
+    def find_all_regions(self):
         if (len(self.coordinates) > 0):
             for i in range(len(self.coordinates)):
                 roi = self.img[self.coordinates[i][1] : self.coordinates[i][1] + self.coordinates[i][3] , self.coordinates[i][0] : self.coordinates[i][0] + self.coordinates[i][2]]
                 self.regions.append(roi)
-
-            random_index = np.random.randint(0, len(self.regions))
-            #TODO: add a new window to show the random region of interest
-            cv.imshow('Random region', self.regions[random_index])
 
 
     # display cv image with rectangles shown
@@ -284,16 +307,19 @@ class MainWindow(QMainWindow):
                 self.save_cv_image_pixmap()
 
     
+    # function that zooms image in
     def zoom_in_button_click(self):
         self.zoom_factor *= 1.1
         self.zoom_image()
 
 
+    # function that zooms image out
     def zoom_out_button_click(self):
         self.zoom_factor *= 0.9
         self.zoom_image()
 
     
+    # function that zooms image depending on if its in or out
     def zoom_image(self):
         pixmap = self.big_image_label.pixmap()
         resized_pixmap = pixmap.scaled(self.scroll_area.size() * self.zoom_factor, Qt.AspectRatioMode.KeepAspectRatio)
@@ -301,7 +327,22 @@ class MainWindow(QMainWindow):
         self.big_image_label.setPixmap(self.big_image_label.pixmap())
         self.big_image_label.resize(self.big_image_label.pixmap().size())
 
-    #TODO: add way to zoom in and out of image
+
+    # function to get position of where user pressed and show this square
+    def get_pixel(self, event):
+        x = event.pos().x()
+        y = event.pos().y()
+        self.pixel_x = int((x/self.big_image_label.width()) * self.cv_width)
+        self.pixel_y = int((y/self.big_image_label.height()) * self.cv_height)
+        if self.select_region_checked == True:
+            self.find_all_regions()
+            # check if the user has clicked on a rectangle
+            for i in range(len(self.coordinates)):
+                if self.pixel_x > self.coordinates[i][0] and self.pixel_x < self.coordinates[i][0] + self.coordinates[i][2] and self.pixel_y > self.coordinates[i][1] and self.pixel_y < self.coordinates[i][1] + self.coordinates[i][3]:
+                    cv.imshow('Random region', self.regions[i])
+
+
+    #TODO: add way to use scroll to zoom in out
     #TODO: add minimap
     #TODO: click on rectangle and this goes full screen.
     #TODO: finish top and side menu            

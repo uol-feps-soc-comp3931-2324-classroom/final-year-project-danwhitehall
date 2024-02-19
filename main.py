@@ -74,7 +74,7 @@ class MainWindow(QMainWindow):
         self.open_file.triggered.connect(self.open_file_button_click)
 
         self.save_file = QAction("Save File", self)
-        # TODO: self.save_file.triggered.connect(self.open_file_button_click)
+        self.save_file.triggered.connect(self.save_file_button_click)
         self.save_file.setEnabled(False)
 
         file_menu = menu.addMenu("File")
@@ -200,6 +200,13 @@ class MainWindow(QMainWindow):
         self.side_grid_layout.addWidget(self.area_slider, 2, 0, 1, 0)
 
 
+    # function to save the file
+    def save_file_button_click(self):
+        if not self.big_image_label.image.isNull():
+            image_file, _ = QFileDialog.getSaveFileName(self, "Save Image", "", "PNG(*.png);;JPEG(*.jpg *.jpeg);;Tiff(*.tiff *.tif);;All Files(*.*)")
+            if image_file:
+                self.big_image_label.image.save(image_file)
+
     # function when user wants to open file
     def open_file_button_click(self):
         self.squares_pressed_count = 0
@@ -210,6 +217,7 @@ class MainWindow(QMainWindow):
 
         # if the user has selected a file
         if dialogSucessful:
+            self.save_file.setEnabled(True)
             # get the selected file
             fileInfo.selectedFiles = dialog.selectedFiles()
             self.image_path = fileInfo.selectedFiles[0]

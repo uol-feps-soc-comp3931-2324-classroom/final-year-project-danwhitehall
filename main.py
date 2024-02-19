@@ -59,6 +59,7 @@ class MainWindow(QMainWindow):
         self.scroll_area.setBackgroundRole(QPalette.ColorRole.Dark)
         self.scroll_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.scroll_area.setWidget(self.big_image_label)
+        self.visible = self.scroll_area.visibleRegion()
 
         self.setCentralWidget(self.scroll_area)
 
@@ -86,6 +87,11 @@ class MainWindow(QMainWindow):
         toolbar = QToolBar()
         self.addToolBar(toolbar)
 
+        # exit screen button
+        exit_button = QAction("Exit", self)
+        exit_button.triggered.connect(self.close)
+        toolbar.addAction(exit_button)
+
         # create open file button for toolbar
         open_file_button = QAction("Open File", self)
         open_file_button.setStatusTip("Open a file")
@@ -112,6 +118,18 @@ class MainWindow(QMainWindow):
         self.side_menu = QDockWidget("Side Menu")
         self.side_menu.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         self.side_menu.setMinimumWidth(200)
+
+        #TODO: add minimap
+        self.small_image_label = QLabel(self)
+        self.small_image_label.image = QImage()
+        # self.small_image_label.original_image = self.small_image_label.image
+        self.small_image_label.rubber_band = QRubberBand(QRubberBand.Shape.Rectangle, self)
+
+        # self.small_image_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        self.small_image_label.setScaledContents(True)
+        self.small_image_label.setPixmap(QPixmap().fromImage(self.small_image_label.image))
+        self.small_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # self.small_image_label.resize(100, 100)
 
         # create a label for find areas button
         toggle_areas_label = QLabel("Toggle squares")
@@ -145,13 +163,14 @@ class MainWindow(QMainWindow):
         
         # create a grid layout for the side menu and add all widgets
         self.side_grid_layout = QGridLayout()
-        self.side_grid_layout.addWidget(toggle_areas_label, 0, 0, 1, 2)
-        self.side_grid_layout.addWidget(toggle_areas, 0, 1, 1, 3)
-        self.side_grid_layout.addWidget(rectangle_area, 1, 0)
-        self.side_grid_layout.addWidget(self.area_slider, 2, 0, 1, 0)
-        self.side_grid_layout.addWidget(random_region_label, 3, 0, 1, 2)
-        self.side_grid_layout.addWidget(random_region_button, 3, 1, 1, 3)
-        self.side_grid_layout.addWidget(self.select_checkbox, 4, 0, 1, 2)
+        self.side_grid_layout.addWidget(self.small_image_label, 0, 0)
+        self.side_grid_layout.addWidget(toggle_areas_label, 1, 0)
+        self.side_grid_layout.addWidget(toggle_areas, 1, 1)
+        self.side_grid_layout.addWidget(rectangle_area, 2, 0)
+        self.side_grid_layout.addWidget(self.area_slider, 3, 0)
+        self.side_grid_layout.addWidget(random_region_label, 4, 0)
+        self.side_grid_layout.addWidget(random_region_button, 4, 1)
+        self.side_grid_layout.addWidget(self.select_checkbox, 5, 0)
         self.side_grid_layout.setRowStretch(7,10)
     
         container = QWidget()
@@ -198,8 +217,11 @@ class MainWindow(QMainWindow):
             # set whats in big image to the selected file
             self.big_image_label.image = QImage(self.image_path)
             self.big_image_label.original_image = self.big_image_label.image
+            self.small_image_label.image = QImage(self.image_path)
+            # self.small_image_label.original_image = self.small_image_label.image
 
             self.save_original_image_pixmap()
+            self.save_small_image_pixmap()
        
             # reset the squares slider 
             self.reset_area_slider()
@@ -296,6 +318,15 @@ class MainWindow(QMainWindow):
         self.big_image_label.resize(self.big_image_label.pixmap().size())
 
 
+    def save_small_image_pixmap(self):
+        print("1")
+        pixmap = QPixmap().fromImage(self.small_image_label.image)
+        resized_pixmap = pixmap.scaled(self.side_menu.width(), self.side_menu.width(), Qt.AspectRatioMode.KeepAspectRatio)
+        self.small_image_label.setPixmap(resized_pixmap)
+        self.small_image_label.resize(self.small_image_label.pixmap().size())
+        print("2")
+
+
     # toggle screen to show squares on and off        
     def toggle_squares_pressed(self):
         if not self.big_image_label.image.isNull():
@@ -355,7 +386,6 @@ class MainWindow(QMainWindow):
     #TODO: add minimap
     #TODO: click on rectangle and this goes full screen.
     #TODO: finish top and side menu    
-    #TODO: fix issue where when zooming the image gets blurry and pixelated        
 
     
 

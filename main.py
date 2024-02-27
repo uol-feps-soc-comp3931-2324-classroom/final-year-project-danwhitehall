@@ -44,8 +44,6 @@ class MainWindow(QMainWindow):
 
    # create label for image
     def createImageLabel(self):
-
-
         tab = QTabWidget(self)
 
         self.big_image_label = QLabel(self)
@@ -112,7 +110,8 @@ class MainWindow(QMainWindow):
 
 
         view_menu = menu.addMenu("View")
-        view_menu.addAction(self.tools_menu_act)
+        view_menu.addAction(self.toggle_acquisition_menu)
+        view_menu.addAction(self.toggle_processing_menu)
 
 
     # create toolbar below information bar
@@ -213,13 +212,27 @@ class MainWindow(QMainWindow):
 
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.acquisition_side_menu)
 
-        self.tools_menu_act = self.acquisition_side_menu.toggleViewAction()
+        self.toggle_acquisition_menu = self.acquisition_side_menu.toggleViewAction()
 
     
     def createProcessingSideMenu(self):
-        self.processing_side_menu = QDockWidget("Data Acquisition Side Menu")
+        self.processing_side_menu = QDockWidget("Data Processing Side Menu")
         self.processing_side_menu.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         self.processing_side_menu.setMinimumWidth(200)
+
+        # create label
+        label = QLabel("label")
+
+        self.processing_side_grid_layout = QGridLayout()
+        self.processing_side_grid_layout.addWidget(label, 0, 0)
+        self.acquisition_side_grid_layout.setRowStretch(7,10)
+        container = QWidget()
+        container.setLayout(self.processing_side_grid_layout)
+        self.processing_side_menu.setWidget(container)
+
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.processing_side_menu)
+
+        self.toggle_processing_menu = self.processing_side_menu.toggleViewAction()
 
 
 
@@ -339,7 +352,10 @@ class MainWindow(QMainWindow):
             self.find_all_regions()
             random_index = np.random.randint(0, len(self.regions))
             #TODO: add a new window to show the random region of interest
-            cv.imshow('Random region', self.regions[random_index])
+            # cv.imshow('Random region', self.regions[random_index])
+            self.region_img = self.regions[random_index]
+            self.save_cv_region_image_pixmap()
+
 
 
     # function that gets all regions of interest

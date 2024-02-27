@@ -292,15 +292,17 @@ class MainWindow(QMainWindow):
 
     # function to find a random region of interest
     def find_random_region(self):
-        self.find_all_regions()
-        random_index = np.random.randint(0, len(self.regions))
-        #TODO: add a new window to show the random region of interest
-        cv.imshow('Random region', self.regions[random_index])
+        if not self.big_image_label.image.isNull():
+            self.find_all_regions()
+            random_index = np.random.randint(0, len(self.regions))
+            #TODO: add a new window to show the random region of interest
+            cv.imshow('Random region', self.regions[random_index])
 
 
     # function that gets all regions of interest
     def find_all_regions(self):
         if (len(self.coordinates) > 0):
+            self.regions = []
             for i in range(len(self.coordinates)):
                 roi = self.img[self.coordinates[i][1] : self.coordinates[i][1] + self.coordinates[i][3] , self.coordinates[i][0] : self.coordinates[i][0] + self.coordinates[i][2]]
                 self.regions.append(roi)
@@ -378,16 +380,22 @@ class MainWindow(QMainWindow):
 
     # function to get position of where user pressed and show this square
     def get_pixel(self, event):
+        # get x and y position of where user clicked
         x = event.pos().x()
         y = event.pos().y()
+
+        # get x, y position in relation to size of image
         self.pixel_x = int((x/self.big_image_label.width()) * self.cv_width)
         self.pixel_y = int((y/self.big_image_label.height()) * self.cv_height)
+
+
         if self.select_region_checked == True:
             self.find_all_regions()
             # check if the user has clicked on a rectangle
             for i in range(len(self.coordinates)):
-                if self.pixel_x > self.coordinates[i][0] and self.pixel_x < self.coordinates[i][0] + self.coordinates[i][2] and self.pixel_y > self.coordinates[i][1] and self.pixel_y < self.coordinates[i][1] + self.coordinates[i][3]:
+                if self.pixel_x > self.coordinates[i][0] and self.pixel_x < (self.coordinates[i][0] + self.coordinates[i][2]) and self.pixel_y > self.coordinates[i][1] and self.pixel_y < (self.coordinates[i][1] + self.coordinates[i][3]):
                     cv.imshow('Random region', self.regions[i])
+                    
 
 
     #TODO: add way to use scroll to zoom in out

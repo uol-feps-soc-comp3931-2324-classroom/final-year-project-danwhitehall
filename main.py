@@ -22,9 +22,10 @@ class MainWindow(QMainWindow):
         # set up the screen and add all menus
         self.setProperties()
         self.createImageLabel()
+        self.createAcquisitionSideMenu()
+        self.createProcessingSideMenu()
         self.createInfoBar()
         self.createToolBar()
-        self.createSideMenu()
 
         # show window
         self.show()
@@ -43,6 +44,10 @@ class MainWindow(QMainWindow):
 
    # create label for image
     def createImageLabel(self):
+
+
+        tab = QTabWidget(self)
+
         self.big_image_label = QLabel(self)
         self.big_image_label.image = QImage()
         self.big_image_label.original_image = self.big_image_label.image
@@ -61,7 +66,31 @@ class MainWindow(QMainWindow):
         self.scroll_area.setWidget(self.big_image_label)
         self.visible = self.scroll_area.visibleRegion()
 
-        self.setCentralWidget(self.scroll_area)
+        ##########################################################
+
+        self.region_image_label = QLabel(self)
+        self.region_image_label.image = QImage()
+        self.region_image_label.original_image = self.region_image_label.image
+        self.region_image_label.rubber_band = QRubberBand(QRubberBand.Shape.Rectangle, self)
+
+        self.region_image_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        self.region_image_label.setScaledContents(True)
+        self.region_image_label.setPixmap(QPixmap().fromImage(self.region_image_label.image))
+        self.region_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.region_image_label.resize(self.region_image_label.pixmap().size())
+
+        # add a scroll area if label is bigger than screen size
+        self.scroll_area_region = QScrollArea()
+        self.scroll_area_region.setBackgroundRole(QPalette.ColorRole.Dark)
+        self.scroll_area_region.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.scroll_area_region.setWidget(self.region_image_label)
+        self.visible = self.scroll_area_region.visibleRegion()
+
+        tab.addTab(self.scroll_area, "Main Image")
+        tab.addTab(self.scroll_area_region, "Region Image")
+
+
+        self.setCentralWidget(tab)
 
         self.big_image_label.mousePressEvent = self.get_pixel
 
@@ -80,6 +109,10 @@ class MainWindow(QMainWindow):
         file_menu = menu.addMenu("File")
         file_menu.addAction(self.open_file)
         file_menu.addAction(self.save_file)
+
+
+        view_menu = menu.addMenu("View")
+        view_menu.addAction(self.tools_menu_act)
 
 
     # create toolbar below information bar
@@ -113,11 +146,11 @@ class MainWindow(QMainWindow):
 
 
     # create a side menu for editing image
-    def createSideMenu(self):
+    def createAcquisitionSideMenu(self):
         # create a dock widget for the side menu
-        self.side_menu = QDockWidget("Side Menu")
-        self.side_menu.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
-        self.side_menu.setMinimumWidth(200)
+        self.acquisition_side_menu = QDockWidget("Data Acquisition Side Menu")
+        self.acquisition_side_menu.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.acquisition_side_menu.setMinimumWidth(200)
 
         #TODO: add minimap
         self.small_image_label = QLabel(self)
@@ -162,23 +195,33 @@ class MainWindow(QMainWindow):
         self.select_checkbox.stateChanged.connect(self.toggle_select_region)
         
         # create a grid layout for the side menu and add all widgets
-        self.side_grid_layout = QGridLayout()
-        self.side_grid_layout.addWidget(self.small_image_label, 0, 0)
-        self.side_grid_layout.addWidget(toggle_areas_label, 1, 0)
-        self.side_grid_layout.addWidget(toggle_areas, 1, 1)
-        self.side_grid_layout.addWidget(rectangle_area, 2, 0)
-        self.side_grid_layout.addWidget(self.area_slider, 3, 0)
-        self.side_grid_layout.addWidget(random_region_label, 4, 0)
-        self.side_grid_layout.addWidget(random_region_button, 4, 1)
-        self.side_grid_layout.addWidget(self.select_checkbox, 5, 0)
-        self.side_grid_layout.setRowStretch(7,10)
+        self.acquisition_side_grid_layout = QGridLayout()
+        self.acquisition_side_grid_layout.addWidget(self.small_image_label, 0, 0)
+        self.acquisition_side_grid_layout.addWidget(toggle_areas_label, 1, 0)
+        self.acquisition_side_grid_layout.addWidget(toggle_areas, 1, 1)
+        self.acquisition_side_grid_layout.addWidget(rectangle_area, 2, 0)
+        self.acquisition_side_grid_layout.addWidget(self.area_slider, 3, 0)
+        self.acquisition_side_grid_layout.addWidget(random_region_label, 4, 0)
+        self.acquisition_side_grid_layout.addWidget(random_region_button, 4, 1)
+        self.acquisition_side_grid_layout.addWidget(self.select_checkbox, 5, 0)
+        self.acquisition_side_grid_layout.setRowStretch(7,10)
     
         container = QWidget()
-        container.setLayout(self.side_grid_layout)
+        container.setLayout(self.acquisition_side_grid_layout)
 
-        self.side_menu.setWidget(container)
+        self.acquisition_side_menu.setWidget(container)
 
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.side_menu)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.acquisition_side_menu)
+
+        self.tools_menu_act = self.acquisition_side_menu.toggleViewAction()
+
+    
+    def createProcessingSideMenu(self):
+        self.processing_side_menu = QDockWidget("Data Acquisition Side Menu")
+        self.processing_side_menu.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.processing_side_menu.setMinimumWidth(200)
+
+
 
 
     def toggle_select_region(self):
@@ -197,7 +240,7 @@ class MainWindow(QMainWindow):
     def update_area_slider(self):
         self.area_slider.setRange(0, int(self.max_value)-1)
         self.area_slider.setTickInterval(int((self.max_value)/10))
-        self.side_grid_layout.addWidget(self.area_slider, 2, 0, 1, 0)
+        # self.acquisition_side_grid_layout.addWidget(self.area_slider, 2, 0, 1, 0)
 
 
     # function to save the file
@@ -331,10 +374,31 @@ class MainWindow(QMainWindow):
     def save_small_image_pixmap(self):
         print("1")
         pixmap = QPixmap().fromImage(self.small_image_label.image)
-        resized_pixmap = pixmap.scaled(self.side_menu.width(), self.side_menu.width(), Qt.AspectRatioMode.KeepAspectRatio)
+        resized_pixmap = pixmap.scaled(self.acquisition_side_menu.width(), self.acquisition_side_menu.width(), Qt.AspectRatioMode.KeepAspectRatio)
         self.small_image_label.setPixmap(resized_pixmap)
         self.small_image_label.resize(self.small_image_label.pixmap().size())
         print("2")
+
+
+    def save_cv_region_image_pixmap(self):
+        if self.region_img is not None:
+            # Convert NumPy array to bytes
+            region_bytes = self.region_img.tobytes()
+
+            # Get image dimensions
+            height, width, channel = self.region_img.shape
+            bytesPerLine = 3 * width
+
+            # Create QImage from bytes
+            q_image = QImage(region_bytes, width, height, bytesPerLine, QImage.Format.Format_RGB888)
+
+            # Convert QImage to QPixmap
+            pixmap = QPixmap().fromImage(q_image)
+
+            # Display the QPixmap
+            self.region_image_label.setPixmap(pixmap)
+            self.region_image_label.resize(pixmap.size())
+
 
 
     # toggle screen to show squares on and off        
@@ -394,7 +458,9 @@ class MainWindow(QMainWindow):
             # check if the user has clicked on a rectangle
             for i in range(len(self.coordinates)):
                 if self.pixel_x > self.coordinates[i][0] and self.pixel_x < (self.coordinates[i][0] + self.coordinates[i][2]) and self.pixel_y > self.coordinates[i][1] and self.pixel_y < (self.coordinates[i][1] + self.coordinates[i][3]):
-                    cv.imshow('Random region', self.regions[i])
+                    self.region_img = self.regions[i]
+                    self.save_cv_region_image_pixmap()
+
                     
 
 

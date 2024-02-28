@@ -2,6 +2,9 @@
 import sys
 from PyQt6.QtWidgets import QToolBar
 import cv2 as cv
+import skimage as ski
+from skimage import img_as_ubyte
+import matplotlib.pyplot as plt
 import numpy as np
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import *
@@ -23,7 +26,7 @@ class MainWindow(QMainWindow):
         self.setProperties()
         self.createImageLabel()
         self.createAcquisitionSideMenu()
-        self.createProcessingSideMenu()
+        # self.createProcessingSideMenu()
         self.createInfoBar()
         self.createToolBar()
 
@@ -38,13 +41,15 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Data acquisition pipeline")
         self.showMaximized()
         self.zoom_factor = 1.0
-        self.select_region_checked = False
+        self.select_region_checked = True
         self.regions = []
+        self.side_menu_side_selected = Qt.DockWidgetArea.LeftDockWidgetArea
+        self.main_tab_selected = True
 
 
    # create label for image
     def createImageLabel(self):
-        tab = QTabWidget(self)
+        self.tabs = QTabWidget(self)
 
         self.big_image_label = QLabel(self)
         self.big_image_label.image = QImage()
@@ -84,11 +89,13 @@ class MainWindow(QMainWindow):
         self.scroll_area_region.setWidget(self.region_image_label)
         self.visible = self.scroll_area_region.visibleRegion()
 
-        tab.addTab(self.scroll_area, "Main Image")
-        tab.addTab(self.scroll_area_region, "Region Image")
+        self.tabs.addTab(self.scroll_area, "Main Image")
+        self.tabs.addTab(self.scroll_area_region, "Region Image")
 
 
-        self.setCentralWidget(tab)
+        self.setCentralWidget(self.tabs)
+
+        self.tabs.currentChanged.connect(self.tabChanged)
 
         self.big_image_label.mousePressEvent = self.get_pixel
 
@@ -110,8 +117,8 @@ class MainWindow(QMainWindow):
 
 
         view_menu = menu.addMenu("View")
-        view_menu.addAction(self.toggle_acquisition_menu)
-        view_menu.addAction(self.toggle_processing_menu)
+        # view_menu.addAction(self.toggle_acquisition_menu)
+        # view_menu.addAction(self.toggle_processing_menu)
 
 
     # create toolbar below information bar
@@ -191,7 +198,14 @@ class MainWindow(QMainWindow):
         # create a checkbox for being able to select region
         self.select_checkbox = QCheckBox()
         self.select_checkbox.setText("Select region")
+        self.select_checkbox.setChecked(True)
         self.select_checkbox.stateChanged.connect(self.toggle_select_region)
+
+        # create a button to process whole image
+        process_whole_image_label = QLabel("Process whole image")
+        process_whole_image_button = QToolButton(self)
+        process_whole_image_button.setToolTip("Process whole image")
+        process_whole_image_button.clicked.connect(self.process_whole_image)
         
         # create a grid layout for the side menu and add all widgets
         self.acquisition_side_grid_layout = QGridLayout()
@@ -203,14 +217,16 @@ class MainWindow(QMainWindow):
         self.acquisition_side_grid_layout.addWidget(random_region_label, 4, 0)
         self.acquisition_side_grid_layout.addWidget(random_region_button, 4, 1)
         self.acquisition_side_grid_layout.addWidget(self.select_checkbox, 5, 0)
-        self.acquisition_side_grid_layout.setRowStretch(7,10)
+        self.acquisition_side_grid_layout.addWidget(process_whole_image_label, 6, 0)
+        self.acquisition_side_grid_layout.addWidget(process_whole_image_button, 6, 1)
+        self.acquisition_side_grid_layout.setRowStretch(10,10)
     
         container = QWidget()
         container.setLayout(self.acquisition_side_grid_layout)
 
         self.acquisition_side_menu.setWidget(container)
 
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.acquisition_side_menu)
+        self.addDockWidget(self.side_menu_side_selected, self.acquisition_side_menu)
 
         self.toggle_acquisition_menu = self.acquisition_side_menu.toggleViewAction()
 
@@ -220,30 +236,62 @@ class MainWindow(QMainWindow):
         self.processing_side_menu.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         self.processing_side_menu.setMinimumWidth(200)
 
-        # create label
-        label = QLabel("label")
+        # create a label and button for random region button
+        circles_label = QLabel("Generate circles")
+        circles_button = QToolButton(self)
+        circles_button.setToolTip("Toggle squares in image")
+        circles_button.clicked.connect(self.find_circles)
+
+        # create slider for finding circles on region
+        circle_slider_label = QLabel("Minimum area for slider")
+        self.circle_slider = QSlider(Qt.Orientation.Horizontal)
+        self.circle_slider.setRange(0, 100)
+        self.circle_slider.setValue(0)
+        self.circle_slider.setTickInterval(5)
+        self.circle_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.circle_slider.valueChanged.connect(self.find_circles)
+
+        # create button to revert back to original image
+        revert_label = QLabel("Revert to original image")
+        revert_button = QToolButton(self)
+        revert_button.setToolTip("Revert to original image")
+        revert_button.clicked.connect(self.save_cv_region_image_pixmap)
 
         self.processing_side_grid_layout = QGridLayout()
-        self.processing_side_grid_layout.addWidget(label, 0, 0)
-        self.acquisition_side_grid_layout.setRowStretch(7,10)
+        self.processing_side_grid_layout.addWidget(circles_label, 0, 0)
+        self.processing_side_grid_layout.addWidget(circles_button, 0, 1)
+        self.processing_side_grid_layout.addWidget(circle_slider_label, 1, 0)
+        self.processing_side_grid_layout.addWidget(self.circle_slider, 2, 0)
+        self.processing_side_grid_layout.addWidget(revert_label, 3, 0)
+        self.processing_side_grid_layout.addWidget(revert_button, 3, 1)
+        self.processing_side_grid_layout.setRowStretch(7,10)
         container = QWidget()
         container.setLayout(self.processing_side_grid_layout)
         self.processing_side_menu.setWidget(container)
 
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.processing_side_menu)
+        self.addDockWidget(self.side_menu_side_selected, self.processing_side_menu)
 
         self.toggle_processing_menu = self.processing_side_menu.toggleViewAction()
 
 
+    def tabChanged(self, index):
+        if self.main_tab_selected == True:
+            self.side_menu_side_selected = self.dockWidgetArea(self.acquisition_side_menu)
+            self.removeDockWidget(self.acquisition_side_menu)
+            self.createProcessingSideMenu()
+            self.main_tab_selected = False
+        else:
+            self.side_menu_side_selected = self.dockWidgetArea(self.processing_side_menu)
+            self.removeDockWidget(self.processing_side_menu)
+            self.createAcquisitionSideMenu()
+            self.main_tab_selected = True
 
 
     def toggle_select_region(self):
         if self.select_checkbox.isChecked():
             self.select_region_checked = True
-            # self.big_image_label.setMouseTracking(True)
         else:
             self.select_region_checked = False
-            # self.big_image_label.setMouseTracking(False)
 
         
     def reset_area_slider(self):
@@ -302,10 +350,11 @@ class MainWindow(QMainWindow):
     def find_areas(self):
         if not self.big_image_label.image.isNull():
             self.img = cv.imread(self.image_path)
-            height, width, channel = self.img.shape
+            self.img_copy = self.img.copy()
+            height, width, channel = self.img_copy.shape
             self.cv_width = width
             self.cv_height = height
-            gray = cv.cvtColor(self.img, cv.COLOR_BGR2GRAY)
+            gray = cv.cvtColor(self.img_copy, cv.COLOR_BGR2GRAY)
             blur = cv.medianBlur(gray, 5)
 
             sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
@@ -331,11 +380,11 @@ class MainWindow(QMainWindow):
                     rect = cv.minAreaRect(cnt)
                     box = cv.boxPoints(rect)
                     box = np.int0(box)
-                    cv.drawContours(self.img, [box], 0, (0,0,255), 2)
+                    cv.drawContours(self.img_copy, [box], 0, (0,0,255), 2)
                     self.areas.append(area)
                     coord = [x,y,w,h]
                     self.coordinates.append(coord)
-                    cv.rectangle(self.img, (x,y), (x+w, y+h), (0,255,0), 2)
+                    cv.rectangle(self.img_copy, (x,y), (x+w, y+h), (0,255,0), 2)
             
             self.max_index = np.argmax(self.areas)
             self.max_value = self.areas[self.max_index]
@@ -344,18 +393,47 @@ class MainWindow(QMainWindow):
             if self.squares_pressed_count % 2 == 1: 
                 self.save_cv_image_pixmap()
             self.update_area_slider()
-                
 
+    def connected_components(self, image, connectivity=2):
+        labeled_image, count = ski.measure.label(self.binary_mask,
+                                                    connectivity=connectivity, return_num=True)
+        return labeled_image, count
+
+
+    def find_circles(self):
+        if self.region_img is not None:
+            # print("1")
+            grey_image = ski.color.rgb2gray(self.region_img)
+            blurred = ski.filters.gaussian(grey_image, sigma=1.0)
+            t = float(self.circle_slider.value())/100
+            print("t: ",t)
+            self.binary_mask = blurred < t
+            fig, ax = plt.subplots()
+            plt.imshow(self.binary_mask, cmap="gray")
+            selection = ~self.region_img.copy()
+            selection[~self.binary_mask] = 0
+            self.components_image, self.circles_count = self.connected_components(selection, connectivity=2)
+            self.ski_image = self.binary_mask
+            #fig, ax = plt.subplots()
+            #ax = plt.imshow(self.ski_image)
+
+            # plt.show()
+            self.save_ski_image_as_pixmap()
+
+    # function to process whole image into process tab
+    def process_whole_image(self):
+        if not self.big_image_label.image.isNull():
+            self.region_img = self.img
+            self.save_cv_region_image_pixmap()
+
+                
     # function to find a random region of interest
     def find_random_region(self):
         if not self.big_image_label.image.isNull():
             self.find_all_regions()
             random_index = np.random.randint(0, len(self.regions))
-            #TODO: add a new window to show the random region of interest
-            # cv.imshow('Random region', self.regions[random_index])
             self.region_img = self.regions[random_index]
             self.save_cv_region_image_pixmap()
-
 
 
     # function that gets all regions of interest
@@ -369,14 +447,13 @@ class MainWindow(QMainWindow):
 
     # display cv image with rectangles shown
     def save_cv_image_pixmap(self):
-        height, width, channel = self.img.shape
+        height, width, channel = self.img_copy.shape
         bytesPerLine = 3 * width
-        self.big_image_label.image = QImage(self.img.data, width, height, bytesPerLine, QImage.Format.Format_RGB888)
+        self.big_image_label.image = QImage(self.img_copy.data, width, height, bytesPerLine, QImage.Format.Format_RGB888)
         pixmap = QPixmap().fromImage(self.big_image_label.image)
         resized_pixmap = pixmap.scaled(self.scroll_area.size() * self.zoom_factor, Qt.AspectRatioMode.KeepAspectRatio)
         self.big_image_label.setPixmap(resized_pixmap)
         self.big_image_label.resize(self.big_image_label.pixmap().size())
-
     
     
     # display original image with no rectangles shown
@@ -388,33 +465,54 @@ class MainWindow(QMainWindow):
 
 
     def save_small_image_pixmap(self):
-        print("1")
         pixmap = QPixmap().fromImage(self.small_image_label.image)
         resized_pixmap = pixmap.scaled(self.acquisition_side_menu.width(), self.acquisition_side_menu.width(), Qt.AspectRatioMode.KeepAspectRatio)
         self.small_image_label.setPixmap(resized_pixmap)
         self.small_image_label.resize(self.small_image_label.pixmap().size())
-        print("2")
 
 
     def save_cv_region_image_pixmap(self):
         if self.region_img is not None:
             # Convert NumPy array to bytes
             region_bytes = self.region_img.tobytes()
-
             # Get image dimensions
             height, width, channel = self.region_img.shape
             bytesPerLine = 3 * width
-
             # Create QImage from bytes
             q_image = QImage(region_bytes, width, height, bytesPerLine, QImage.Format.Format_RGB888)
-
             # Convert QImage to QPixmap
             pixmap = QPixmap().fromImage(q_image)
+            resized_pixmap = pixmap.scaled(self.scroll_area_region.size() * self.zoom_factor, Qt.AspectRatioMode.KeepAspectRatio)
 
             # Display the QPixmap
             self.region_image_label.setPixmap(pixmap)
             self.region_image_label.resize(pixmap.size())
 
+            self.tabs.setCurrentIndex(1)
+
+    def save_ski_image_as_pixmap(self):
+        if self.region_img is not None:
+            # print("Image shape:", self.ski_image.shape)
+            # print("Image dtype:", self.ski_image.dtype)
+
+            # Convert to uint8
+            self.ski_image = img_as_ubyte(self.ski_image)
+
+            # print("Image shape after conversion:", self.ski_image.shape)
+            # print("Image dtype after conversion:", self.ski_image.dtype)
+
+            # Create QImage from numpy array
+            img = QImage(self.ski_image.data, self.ski_image.shape[1], self.ski_image.shape[0],
+                        self.ski_image.strides[0], QImage.Format.Format_Grayscale8)  # Try a different format
+
+            # Create QPixmap from QImage
+            pixmap = QPixmap.fromImage(img)
+
+            # Set the pixmap to the label
+            self.region_image_label.setPixmap(pixmap)
+            self.region_image_label.resize(pixmap.size())
+            # print("Pixmap size:", pixmap.size())  # Print pixmap size
+            # print("2")
 
 
     # toggle screen to show squares on and off        
@@ -451,11 +549,16 @@ class MainWindow(QMainWindow):
 
     # new version of zooming in and out
     def zoom_image(self):
-        if not self.big_image_label.image.isNull():
-            if self.squares_pressed_count % 2 == 0:
-                self.save_original_image_pixmap()
-            else:
-                self.save_cv_image_pixmap()
+        if self.main_tab_selected == True:
+            if not self.big_image_label.image.isNull():
+                if self.squares_pressed_count % 2 == 0:
+                    self.save_original_image_pixmap()
+                else:
+                    self.save_cv_image_pixmap()
+        else:
+            self.save_cv_region_image_pixmap()
+
+
 
 
     # function to get position of where user pressed and show this square
@@ -482,8 +585,15 @@ class MainWindow(QMainWindow):
 
     #TODO: add way to use scroll to zoom in out
     #TODO: add minimap
-    #TODO: click on rectangle and this goes full screen.
-    #TODO: finish top and side menu    
+    #TODO: finish top and side menu   
+    #TODO: FIX ZOOM
+    #TODO: FIX SAVING IMAGE
+    #TODO: FIT TO SCREEN FOR PROCESSING
+    #TODO: ADD MORE PROCESSING STUFF - AREA, ETC
+    #TODO: ADD MORE COMMENTS
+    #TODO: MAYBE SLIDER CHANGES DEPENDING ON WHAT USER WANTS
+    #TODO: MAKE CODE NEATER
+    #TODO: 
 
     
 

@@ -40,11 +40,14 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(300,200)
         self.setWindowTitle("Data acquisition pipeline")
         self.showMaximized()
-        self.zoom_factor = 1.0
+        self.zoom_factor_acquisition = 1.0
+        self.zoom_factor_process = 1.0
         self.select_region_checked = True
         self.regions = []
         self.side_menu_side_selected = Qt.DockWidgetArea.LeftDockWidgetArea
         self.main_tab_selected = True
+        self.region_img = None
+        print("5")
 
 
    # create label for image
@@ -237,10 +240,10 @@ class MainWindow(QMainWindow):
         self.processing_side_menu.setMinimumWidth(200)
 
         # create a label and button for random region button
-        circles_label = QLabel("Generate circles")
+        circles_label = QLabel("Toggle circles")
         circles_button = QToolButton(self)
-        circles_button.setToolTip("Toggle squares in image")
-        circles_button.clicked.connect(self.find_circles)
+        circles_button.setToolTip("Toggle circles in image")
+        circles_button.clicked.connect(self.toggle_circles_pressed)
 
         # create slider for finding circles on region
         circle_slider_label = QLabel("Minimum area for slider")
@@ -280,6 +283,7 @@ class MainWindow(QMainWindow):
             self.removeDockWidget(self.acquisition_side_menu)
             self.createProcessingSideMenu()
             self.main_tab_selected = False
+            self.find_circles()
         else:
             self.side_menu_side_selected = self.dockWidgetArea(self.processing_side_menu)
             self.removeDockWidget(self.processing_side_menu)
@@ -314,6 +318,7 @@ class MainWindow(QMainWindow):
     # function when user wants to open file
     def open_file_button_click(self):
         self.squares_pressed_count = 0
+        self.circles_pressed_count = 0
         # create a file dialog
         dialog = QFileDialog()
         dialog.setNameFilter("All images (*.png *.jpg *jpeg *.tif *.tiff)")
@@ -418,7 +423,11 @@ class MainWindow(QMainWindow):
             #ax = plt.imshow(self.ski_image)
 
             # plt.show()
-            self.save_ski_image_as_pixmap()
+            # self.save_ski_image_as_pixmap()
+            if self.circles_pressed_count % 2 == 1: 
+                self.save_ski_image_as_pixmap()
+            
+
 
     # function to process whole image into process tab
     def process_whole_image(self):
@@ -451,7 +460,7 @@ class MainWindow(QMainWindow):
         bytesPerLine = 3 * width
         self.big_image_label.image = QImage(self.img_copy.data, width, height, bytesPerLine, QImage.Format.Format_RGB888)
         pixmap = QPixmap().fromImage(self.big_image_label.image)
-        resized_pixmap = pixmap.scaled(self.scroll_area.size() * self.zoom_factor, Qt.AspectRatioMode.KeepAspectRatio)
+        resized_pixmap = pixmap.scaled(self.scroll_area.size() * self.zoom_factor_acquisition, Qt.AspectRatioMode.KeepAspectRatio)
         self.big_image_label.setPixmap(resized_pixmap)
         self.big_image_label.resize(self.big_image_label.pixmap().size())
     
@@ -459,7 +468,7 @@ class MainWindow(QMainWindow):
     # display original image with no rectangles shown
     def save_original_image_pixmap(self):
         pixmap = QPixmap().fromImage(self.big_image_label.original_image)
-        resized_pixmap = pixmap.scaled(self.scroll_area.size() * self.zoom_factor, Qt.AspectRatioMode.KeepAspectRatio)
+        resized_pixmap = pixmap.scaled(self.scroll_area.size() * self.zoom_factor_acquisition, Qt.AspectRatioMode.KeepAspectRatio)
         self.big_image_label.setPixmap(resized_pixmap)
         self.big_image_label.resize(self.big_image_label.pixmap().size())
 
@@ -482,15 +491,17 @@ class MainWindow(QMainWindow):
             q_image = QImage(region_bytes, width, height, bytesPerLine, QImage.Format.Format_RGB888)
             # Convert QImage to QPixmap
             pixmap = QPixmap().fromImage(q_image)
-            resized_pixmap = pixmap.scaled(self.scroll_area_region.size() * self.zoom_factor, Qt.AspectRatioMode.KeepAspectRatio)
+            resized_pixmap = pixmap.scaled(self.scroll_area_region.size() * self.zoom_factor_process, Qt.AspectRatioMode.KeepAspectRatio)
 
             # Display the QPixmap
-            self.region_image_label.setPixmap(pixmap)
-            self.region_image_label.resize(pixmap.size())
+            self.region_image_label.setPixmap(resized_pixmap)
+            self.region_image_label.resize(self.region_image_label.pixmap().size())
 
             self.tabs.setCurrentIndex(1)
 
-    def save_ski_image_as_pixmap(self):
+            # self.find_circles()
+
+    def save_ski_image_as_pixmap(self):        
         if self.region_img is not None:
             # print("Image shape:", self.ski_image.shape)
             # print("Image dtype:", self.ski_image.dtype)
@@ -507,12 +518,12 @@ class MainWindow(QMainWindow):
 
             # Create QPixmap from QImage
             pixmap = QPixmap.fromImage(img)
+            resized_pixmap = pixmap.scaled(self.scroll_area_region.size() * self.zoom_factor_process, Qt.AspectRatioMode.KeepAspectRatio)
 
-            # Set the pixmap to the label
-            self.region_image_label.setPixmap(pixmap)
-            self.region_image_label.resize(pixmap.size())
-            # print("Pixmap size:", pixmap.size())  # Print pixmap size
-            # print("2")
+            # Display the QPixmap
+            self.region_image_label.setPixmap(resized_pixmap)
+            self.region_image_label.resize(self.region_image_label.pixmap().size())
+
 
 
     # toggle screen to show squares on and off        
@@ -526,26 +537,37 @@ class MainWindow(QMainWindow):
                 self.save_cv_image_pixmap()
 
     
+    def toggle_circles_pressed(self):
+        print("circle pressed")
+        if self.region_img is not None:
+            self.circles_pressed_count += 1
+            if self.circles_pressed_count % 2 == 0:
+                print("cv image")
+                self.save_cv_region_image_pixmap()
+            else:
+                print("ski image")
+                self.save_ski_image_as_pixmap()
+        else:
+            print("No image to toggle")
+
+    
     # function that zooms image in
     def zoom_in_button_click(self):
-        self.zoom_factor *= 1.1
+        if self.main_tab_selected == True:
+            self.zoom_factor_acquisition *= 1.1
+        else:
+            self.zoom_factor_process *= 1.1
         self.zoom_image()
 
 
     # function that zooms image out
     def zoom_out_button_click(self):
-        self.zoom_factor *= 0.9
+        if self.main_tab_selected == True:
+            self.zoom_factor_acquisition *= 0.9
+        else:
+            self.zoom_factor_process *= 0.9
         self.zoom_image()
 
-    # old version of zooming in and out
-    # function that zooms image depending on if its in or out
-    # def zoom_image(self):
-    #     pixmap = self.big_image_label.pixmap()
-    #     resized_pixmap = pixmap.scaled(self.scroll_area.size() * self.zoom_factor, Qt.AspectRatioMode.KeepAspectRatio)
-    #     self.big_image_label.setPixmap(resized_pixmap)
-    #     self.big_image_label.setPixmap(self.big_image_label.pixmap())
-    #     self.big_image_label.resize(self.big_image_label.pixmap().size())
-        
 
     # new version of zooming in and out
     def zoom_image(self):
@@ -556,9 +578,11 @@ class MainWindow(QMainWindow):
                 else:
                     self.save_cv_image_pixmap()
         else:
-            self.save_cv_region_image_pixmap()
-
-
+            if self.region_img is not None:
+                if self.circles_pressed_count % 2 == 0:
+                    self.save_cv_region_image_pixmap()
+                else:
+                    self.save_ski_image_as_pixmap()
 
 
     # function to get position of where user pressed and show this square
@@ -593,7 +617,7 @@ class MainWindow(QMainWindow):
     #TODO: ADD MORE COMMENTS
     #TODO: MAYBE SLIDER CHANGES DEPENDING ON WHAT USER WANTS
     #TODO: MAKE CODE NEATER
-    #TODO: 
+    #TODO: ADD CROP FUNCTION
 
     
 

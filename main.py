@@ -6,7 +6,7 @@ import skimage as ski
 from skimage import img_as_ubyte
 import matplotlib.pyplot as plt
 import numpy as np
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QRect, QSize
 from PyQt6.QtWidgets import *
 from PyQt6.QtGui import QPixmap, QAction, QIcon, QImage, QPalette
 # from PyQt6.sip import voidptr
@@ -47,7 +47,7 @@ class MainWindow(QMainWindow):
         self.side_menu_side_selected = Qt.DockWidgetArea.LeftDockWidgetArea
         self.main_tab_selected = True
         self.region_img = None
-        print("5")
+        self.circles_count = 0
 
 
    # create label for image
@@ -57,7 +57,7 @@ class MainWindow(QMainWindow):
         self.big_image_label = QLabel(self)
         self.big_image_label.image = QImage()
         self.big_image_label.original_image = self.big_image_label.image
-        self.big_image_label.rubber_band = QRubberBand(QRubberBand.Shape.Rectangle, self)
+        # self.big_image_label.rubber_band = QRubberBand(QRubberBand.Shape.Rectangle, self)
 
         self.big_image_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.big_image_label.setScaledContents(True)
@@ -100,7 +100,9 @@ class MainWindow(QMainWindow):
 
         self.tabs.currentChanged.connect(self.tabChanged)
 
-        self.big_image_label.mousePressEvent = self.get_pixel
+        self.big_image_label.mousePressEvent = self.choose_mouse_event
+        self.big_image_label.mouseMoveEvent = self.crop_move
+        self.big_image_label.mouseReleaseEvent = self.crop_main_image_release
 
         
     # create the information bar at top of window
@@ -149,6 +151,12 @@ class MainWindow(QMainWindow):
         zoom_out_button.setStatusTip("Zoom out")
         zoom_out_button.triggered.connect(self.zoom_out_button_click)
         toolbar.addAction(zoom_out_button)
+
+        self.crop_button = QAction("Crop", self)
+        self.crop_button.setStatusTip("Crop image")
+        self.crop_button.setCheckable(True)
+        # self.crop_button.triggered.connect(self.crop_image_button_click)
+        toolbar.addAction(self.crop_button)
 
         # set the status bar
         self.setStatusBar(QStatusBar(self))
@@ -260,6 +268,11 @@ class MainWindow(QMainWindow):
         revert_button.setToolTip("Revert to original image")
         revert_button.clicked.connect(self.save_cv_region_image_pixmap)
 
+        # create a label to show number of circles
+        num_of_circles_label = QLabel("Number of circles found")
+        self.circles_count_label = QLabel(str(self.circles_count))
+
+
         self.processing_side_grid_layout = QGridLayout()
         self.processing_side_grid_layout.addWidget(circles_label, 0, 0)
         self.processing_side_grid_layout.addWidget(circles_button, 0, 1)
@@ -267,6 +280,8 @@ class MainWindow(QMainWindow):
         self.processing_side_grid_layout.addWidget(self.circle_slider, 2, 0)
         self.processing_side_grid_layout.addWidget(revert_label, 3, 0)
         self.processing_side_grid_layout.addWidget(revert_button, 3, 1)
+        self.processing_side_grid_layout.addWidget(num_of_circles_label, 4, 0)
+        self.processing_side_grid_layout.addWidget(self.circles_count_label, 4, 1)
         self.processing_side_grid_layout.setRowStretch(7,10)
         container = QWidget()
         container.setLayout(self.processing_side_grid_layout)
@@ -407,17 +422,16 @@ class MainWindow(QMainWindow):
 
     def find_circles(self):
         if self.region_img is not None:
-            # print("1")
             grey_image = ski.color.rgb2gray(self.region_img)
             blurred = ski.filters.gaussian(grey_image, sigma=1.0)
             t = float(self.circle_slider.value())/100
-            print("t: ",t)
             self.binary_mask = blurred < t
             fig, ax = plt.subplots()
             plt.imshow(self.binary_mask, cmap="gray")
             selection = ~self.region_img.copy()
             selection[~self.binary_mask] = 0
             self.components_image, self.circles_count = self.connected_components(selection, connectivity=2)
+            self.update_circle_count()
             self.ski_image = self.binary_mask
             #fig, ax = plt.subplots()
             #ax = plt.imshow(self.ski_image)
@@ -427,7 +441,8 @@ class MainWindow(QMainWindow):
             if self.circles_pressed_count % 2 == 1: 
                 self.save_ski_image_as_pixmap()
             
-
+    def update_circle_count(self):
+        self.circles_count_label.setText(str(self.circles_count))
 
     # function to process whole image into process tab
     def process_whole_image(self):
@@ -503,14 +518,8 @@ class MainWindow(QMainWindow):
 
     def save_ski_image_as_pixmap(self):        
         if self.region_img is not None:
-            # print("Image shape:", self.ski_image.shape)
-            # print("Image dtype:", self.ski_image.dtype)
-
             # Convert to uint8
             self.ski_image = img_as_ubyte(self.ski_image)
-
-            # print("Image shape after conversion:", self.ski_image.shape)
-            # print("Image dtype after conversion:", self.ski_image.dtype)
 
             # Create QImage from numpy array
             img = QImage(self.ski_image.data, self.ski_image.shape[1], self.ski_image.shape[0],
@@ -538,17 +547,12 @@ class MainWindow(QMainWindow):
 
     
     def toggle_circles_pressed(self):
-        print("circle pressed")
         if self.region_img is not None:
             self.circles_pressed_count += 1
             if self.circles_pressed_count % 2 == 0:
-                print("cv image")
                 self.save_cv_region_image_pixmap()
             else:
-                print("ski image")
                 self.save_ski_image_as_pixmap()
-        else:
-            print("No image to toggle")
 
     
     # function that zooms image in
@@ -585,9 +589,54 @@ class MainWindow(QMainWindow):
                     self.save_ski_image_as_pixmap()
 
 
+    # function that chooses whether to crop image or select region
+    def choose_mouse_event(self, event):
+        if self.crop_button.isChecked():
+            self.big_image_label.rubber_band = QRubberBand(QRubberBand.Shape.Rectangle, self.big_image_label)
+            self.crop_main_image_button_click(event)
+        else:
+            self.get_pixel(event)
+
+
+    # function to crop image
+    def crop_main_image_button_click(self, event):
+        if not self.big_image_label.image.isNull():
+            self.original_point = event.pos()
+            self.big_image_label.rubber_band.setGeometry(QRect(self.original_point, QSize()).normalized())
+            self.big_image_label.rubber_band.show()
+
+    
+    # function to update rubber band
+    def crop_move(self, event):
+        if self.crop_button.isChecked():
+            if not self.big_image_label.image.isNull():
+                self.big_image_label.rubber_band.setGeometry(QRect(self.original_point, event.pos()).normalized())
+
+        
+    # function that gets final point of rubber band
+    def crop_main_image_release(self, event):
+        if self.crop_button.isChecked():
+            if not self.big_image_label.image.isNull():
+                self.big_image_label.rubber_band.hide()
+                self.final_point = event.pos()
+                self.crop_main_image()
+
+    
+    # function that crops the image
+    def crop_main_image(self):
+        if not self.big_image_label.image.isNull():
+            self.original_pixel_x = int((self.original_point.x()/self.big_image_label.width()) * self.cv_width)
+            self.original_pixel_y = int((self.original_point.y()/self.big_image_label.height()) * self.cv_height)
+            self.final_pixel_x = int((self.final_point.x()/self.big_image_label.width()) * self.cv_width)
+            self.final_pixel_y = int((self.final_point.y()/self.big_image_label.height()) * self.cv_height)
+            self.region_img = self.img[self.original_pixel_y:self.final_pixel_y, self.original_pixel_x:self.final_pixel_x]
+            self.save_cv_region_image_pixmap()
+
+
     # function to get position of where user pressed and show this square
     def get_pixel(self, event):
         # get x and y position of where user clicked
+
         x = event.pos().x()
         y = event.pos().y()
 
@@ -610,9 +659,7 @@ class MainWindow(QMainWindow):
     #TODO: add way to use scroll to zoom in out
     #TODO: add minimap
     #TODO: finish top and side menu   
-    #TODO: FIX ZOOM
     #TODO: FIX SAVING IMAGE
-    #TODO: FIT TO SCREEN FOR PROCESSING
     #TODO: ADD MORE PROCESSING STUFF - AREA, ETC
     #TODO: ADD MORE COMMENTS
     #TODO: MAYBE SLIDER CHANGES DEPENDING ON WHAT USER WANTS

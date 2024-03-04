@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PyQt6.QtCore import Qt, QRect, QSize
 from PyQt6.QtWidgets import *
-from PyQt6.QtGui import QPixmap, QAction, QIcon, QImage, QPalette
+from PyQt6.QtGui import QPixmap, QAction, QIcon, QImage, QPalette, QPainter
 # from PyQt6.sip import voidptr
 from file_info import fileInfo
 
@@ -57,7 +57,6 @@ class MainWindow(QMainWindow):
         self.big_image_label = QLabel(self)
         self.big_image_label.image = QImage()
         self.big_image_label.original_image = self.big_image_label.image
-        # self.big_image_label.rubber_band = QRubberBand(QRubberBand.Shape.Rectangle, self)
 
         self.big_image_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.big_image_label.setScaledContents(True)
@@ -100,13 +99,19 @@ class MainWindow(QMainWindow):
 
         self.tabs.currentChanged.connect(self.tabChanged)
 
+        # if user has clicked on the main image
         self.big_image_label.mousePressEvent = self.choose_mouse_event
         self.big_image_label.mouseMoveEvent = self.crop_main_image_move
         self.big_image_label.mouseReleaseEvent = self.crop_main_image_release
 
+        # if user has clicked on the region image
         self.region_image_label.mousePressEvent = self.crop_region_image_button_click
         self.region_image_label.mouseMoveEvent = self.crop_region_image_move
         self.region_image_label.mouseReleaseEvent = self.crop_region_image_release
+
+        # if user has scrolled in the scrollbar of the region image tab
+        self.scroll_area.verticalScrollBar().actionTriggered.connect(self.update_small_image)
+        self.scroll_area.horizontalScrollBar().actionTriggered.connect(self.update_small_image)
 
         
     # create the information bar at top of window
@@ -364,6 +369,7 @@ class MainWindow(QMainWindow):
 
             # find squares for the image
             self.find_areas()
+            self.update_small_image()
             
         # if the user didn't select a file then print this
         else:
@@ -430,23 +436,51 @@ class MainWindow(QMainWindow):
             blurred = ski.filters.gaussian(grey_image, sigma=1.0)
             t = float(self.circle_slider.value())/100
             self.binary_mask = blurred < t
-            fig, ax = plt.subplots()
-            plt.imshow(self.binary_mask, cmap="gray")
+            # fig, ax = plt.subplots()
+            # plt.imshow(self.binary_mask, cmap="gray")
             selection = ~self.region_img.copy()
             selection[~self.binary_mask] = 0
             self.components_image, self.circles_count = self.connected_components(selection, connectivity=2)
             self.update_circle_count()
             self.ski_image = self.binary_mask
-            #fig, ax = plt.subplots()
-            #ax = plt.imshow(self.ski_image)
-
-            # plt.show()
-            # self.save_ski_image_as_pixmap()
             if self.circles_pressed_count % 2 == 1: 
                 self.save_ski_image_as_pixmap()
             
     def update_circle_count(self):
         self.circles_count_label.setText(str(self.circles_count))
+
+
+    def update_small_image(self):
+        viewport_copy = self.img.copy()
+        height, width, channel = viewport_copy.shape
+        bytesPerLine = 3 * width
+
+        total_height = self.scroll_area.widget().height()
+        viewport_height = self.scroll_area.viewport().height()
+        vertical_scrollbar_value = self.scroll_area.verticalScrollBar().value()
+
+        total_width = self.scroll_area.widget().width()
+        viewport_width = self.scroll_area.viewport().width()
+        horizontal_scrollbar_value = self.scroll_area.horizontalScrollBar().value()
+
+        if total_height == 0 or total_width == 0:
+            return
+
+        height_ratio = viewport_height / total_height
+        width_ratio = viewport_width / total_width
+
+        minimap_viewport_height = int(height_ratio * height)
+        minimap_viewport_width = int(width_ratio * width)
+        minimap_viewport_y_position = int((vertical_scrollbar_value / total_height) * height)
+        minimap_viewport_x_position = int((horizontal_scrollbar_value / total_width) * width)
+        cv.rectangle(viewport_copy, (minimap_viewport_x_position, minimap_viewport_y_position), (minimap_viewport_x_position + minimap_viewport_width, minimap_viewport_y_position + minimap_viewport_height), (0,255,0), 10)
+        height, width, channel = viewport_copy.shape
+        bytesPerLine = 3 * width
+        self.small_image_label.image = QImage(viewport_copy.data, width, height, bytesPerLine, QImage.Format.Format_RGB888)
+        pixmap = QPixmap().fromImage(self.small_image_label.image)
+        resized_pixmap = pixmap.scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio)
+        self.small_image_label.setPixmap(resized_pixmap)
+
 
     # function to process whole image into process tab
     def process_whole_image(self):
@@ -501,30 +535,18 @@ class MainWindow(QMainWindow):
 
     def save_cv_region_image_pixmap(self):
         if self.region_img is not None:
-            print("1")
-            # Convert NumPy array to bytes
             region_bytes = self.region_img.tobytes()
-            print("2")
-            # Get image dimensions
             height, width, channel = self.region_img.shape
             bytesPerLine = 3 * width
-            print("3")
-            # Create QImage from bytes
+
             q_image = QImage(region_bytes, width, height, bytesPerLine, QImage.Format.Format_RGB888)
-            print("width ", width, " height ", height)
-            # Convert QImage to QPixmap
             pixmap = QPixmap().fromImage(q_image)
-            print("5")
             resized_pixmap = pixmap.scaled(self.scroll_area_region.size() * self.zoom_factor_process, Qt.AspectRatioMode.KeepAspectRatio)
-            print("6")
-            # Display the QPixmap
+
             self.region_image_label.setPixmap(resized_pixmap)
-            print("7")
             self.region_image_label.resize(self.region_image_label.pixmap().size())
-            print("8")
             self.tabs.setCurrentIndex(1)
 
-            # self.find_circles()
 
     def save_ski_image_as_pixmap(self):        
         if self.region_img is not None:
@@ -572,6 +594,7 @@ class MainWindow(QMainWindow):
         else:
             self.zoom_factor_process *= 1.1
         self.zoom_image()
+        
 
 
     # function that zooms image out
@@ -591,6 +614,7 @@ class MainWindow(QMainWindow):
                     self.save_original_image_pixmap()
                 else:
                     self.save_cv_image_pixmap()
+                self.update_small_image()
         else:
             if self.region_img is not None:
                 if self.circles_pressed_count % 2 == 0:
@@ -666,6 +690,7 @@ class MainWindow(QMainWindow):
                 self.crop_region_image()
                 
 
+    # function to crop region image
     def crop_region_image(self):
         if self.region_img is not None:
             self.original_pixel_x = int((self.original_point.x()/self.region_image_label.width()) * self.region_img.shape[1])
@@ -701,14 +726,12 @@ class MainWindow(QMainWindow):
 
 
     #TODO: add way to use scroll to zoom in out
-    #TODO: add minimap
     #TODO: finish top and side menu   
     #TODO: FIX SAVING IMAGE
     #TODO: ADD MORE PROCESSING STUFF - AREA, ETC
     #TODO: ADD MORE COMMENTS
     #TODO: MAYBE SLIDER CHANGES DEPENDING ON WHAT USER WANTS
     #TODO: MAKE CODE NEATER
-    #TODO: ADD CROP FUNCTION
 
     
 

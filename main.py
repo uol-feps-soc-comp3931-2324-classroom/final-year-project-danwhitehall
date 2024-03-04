@@ -101,8 +101,12 @@ class MainWindow(QMainWindow):
         self.tabs.currentChanged.connect(self.tabChanged)
 
         self.big_image_label.mousePressEvent = self.choose_mouse_event
-        self.big_image_label.mouseMoveEvent = self.crop_move
+        self.big_image_label.mouseMoveEvent = self.crop_main_image_move
         self.big_image_label.mouseReleaseEvent = self.crop_main_image_release
+
+        self.region_image_label.mousePressEvent = self.crop_region_image_button_click
+        self.region_image_label.mouseMoveEvent = self.crop_region_image_move
+        self.region_image_label.mouseReleaseEvent = self.crop_region_image_release
 
         
     # create the information bar at top of window
@@ -497,21 +501,27 @@ class MainWindow(QMainWindow):
 
     def save_cv_region_image_pixmap(self):
         if self.region_img is not None:
+            print("1")
             # Convert NumPy array to bytes
             region_bytes = self.region_img.tobytes()
+            print("2")
             # Get image dimensions
             height, width, channel = self.region_img.shape
             bytesPerLine = 3 * width
+            print("3")
             # Create QImage from bytes
             q_image = QImage(region_bytes, width, height, bytesPerLine, QImage.Format.Format_RGB888)
+            print("width ", width, " height ", height)
             # Convert QImage to QPixmap
             pixmap = QPixmap().fromImage(q_image)
+            print("5")
             resized_pixmap = pixmap.scaled(self.scroll_area_region.size() * self.zoom_factor_process, Qt.AspectRatioMode.KeepAspectRatio)
-
+            print("6")
             # Display the QPixmap
             self.region_image_label.setPixmap(resized_pixmap)
+            print("7")
             self.region_image_label.resize(self.region_image_label.pixmap().size())
-
+            print("8")
             self.tabs.setCurrentIndex(1)
 
             # self.find_circles()
@@ -607,7 +617,7 @@ class MainWindow(QMainWindow):
 
     
     # function to update rubber band
-    def crop_move(self, event):
+    def crop_main_image_move(self, event):
         if self.crop_button.isChecked():
             if not self.big_image_label.image.isNull():
                 self.big_image_label.rubber_band.setGeometry(QRect(self.original_point, event.pos()).normalized())
@@ -630,6 +640,40 @@ class MainWindow(QMainWindow):
             self.final_pixel_x = int((self.final_point.x()/self.big_image_label.width()) * self.cv_width)
             self.final_pixel_y = int((self.final_point.y()/self.big_image_label.height()) * self.cv_height)
             self.region_img = self.img[self.original_pixel_y:self.final_pixel_y, self.original_pixel_x:self.final_pixel_x]
+            self.save_cv_region_image_pixmap()
+
+    
+    def crop_region_image_button_click(self, event):
+        if self.crop_button.isChecked():
+            if self.region_img is not None:
+                self.region_image_label.rubber_band = QRubberBand(QRubberBand.Shape.Rectangle, self.region_image_label)
+                self.original_point = event.pos()
+                self.region_image_label.rubber_band.setGeometry(QRect(self.original_point, QSize()).normalized())
+                self.region_image_label.rubber_band.show()
+    
+
+    def crop_region_image_move(self, event):
+        if self.crop_button.isChecked():
+            if self.region_img is not None:
+                self.region_image_label.rubber_band.setGeometry(QRect(self.original_point, event.pos()).normalized())
+
+
+    def crop_region_image_release(self, event):
+        if self.crop_button.isChecked():
+            if self.region_img is not None:
+                self.region_image_label.rubber_band.hide()
+                self.final_point = event.pos()
+                self.crop_region_image()
+                
+
+    def crop_region_image(self):
+        if self.region_img is not None:
+            self.original_pixel_x = int((self.original_point.x()/self.region_image_label.width()) * self.region_img.shape[1])
+            self.original_pixel_y = int((self.original_point.y()/self.region_image_label.height()) * self.region_img.shape[0])
+            self.final_pixel_x = int((self.final_point.x()/self.region_image_label.width()) * self.region_img.shape[1])
+            self.final_pixel_y = int((self.final_point.y()/self.region_image_label.height()) * self.region_img.shape[0])
+            print(self.original_pixel_x, self.original_pixel_y, self.final_pixel_x, self.final_pixel_y)
+            self.region_img = self.region_img[self.original_pixel_y:self.final_pixel_y, self.original_pixel_x:self.final_pixel_x]
             self.save_cv_region_image_pixmap()
 
 

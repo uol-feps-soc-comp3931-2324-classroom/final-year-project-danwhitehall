@@ -48,6 +48,12 @@ class MainWindow(QMainWindow):
         self.main_tab_selected = True
         self.region_img = None
         self.circles_count = 0
+        self.region_x = 0
+        self.region_y = 0
+        self.region_width = 0
+        self.region_height = 0
+        self.processing_minimap_image_label = QLabel(self)
+        self.processing_minimap_image_label.image = QImage()
 
 
    # create label for image
@@ -178,7 +184,6 @@ class MainWindow(QMainWindow):
         self.acquisition_side_menu.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         self.acquisition_side_menu.setMinimumWidth(200)
 
-        #TODO: add minimap
         self.small_image_label = QLabel(self)
         self.small_image_label.image = QImage()
         # self.small_image_label.original_image = self.small_image_label.image
@@ -256,6 +261,14 @@ class MainWindow(QMainWindow):
         self.processing_side_menu.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         self.processing_side_menu.setMinimumWidth(200)
 
+        # create a label for the minimap
+        self.processing_minimap_image_label = QLabel(self)
+        self.processing_minimap_image_label.image = QImage()
+        self.processing_minimap_image_label.rubber_band = QRubberBand(QRubberBand.Shape.Rectangle, self)
+        self.processing_minimap_image_label.setScaledContents(True)
+        self.processing_minimap_image_label.setPixmap(QPixmap().fromImage(self.processing_minimap_image_label.image))
+        self.processing_minimap_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
         # create a label and button for random region button
         circles_label = QLabel("Toggle circles")
         circles_button = QToolButton(self)
@@ -263,7 +276,7 @@ class MainWindow(QMainWindow):
         circles_button.clicked.connect(self.toggle_circles_pressed)
 
         # create slider for finding circles on region
-        circle_slider_label = QLabel("Minimum area for slider")
+        circle_slider_label = QLabel("Threshold")
         self.circle_slider = QSlider(Qt.Orientation.Horizontal)
         self.circle_slider.setRange(0, 100)
         self.circle_slider.setValue(0)
@@ -271,24 +284,21 @@ class MainWindow(QMainWindow):
         self.circle_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.circle_slider.valueChanged.connect(self.find_circles)
 
-        # create button to revert back to original image
-        revert_label = QLabel("Revert to original image")
-        revert_button = QToolButton(self)
-        revert_button.setToolTip("Revert to original image")
-        revert_button.clicked.connect(self.save_cv_region_image_pixmap)
-
         # create a label to show number of circles
         num_of_circles_label = QLabel("Number of circles found")
         self.circles_count_label = QLabel(str(self.circles_count))
 
+        # create a label to get coordinates of the centre
+        coordinates_label = QLabel("Coordinates of centre")
+        self.coordinates_value = QLabel(str(self.coordinates))
+
 
         self.processing_side_grid_layout = QGridLayout()
-        self.processing_side_grid_layout.addWidget(circles_label, 0, 0)
-        self.processing_side_grid_layout.addWidget(circles_button, 0, 1)
-        self.processing_side_grid_layout.addWidget(circle_slider_label, 1, 0)
-        self.processing_side_grid_layout.addWidget(self.circle_slider, 2, 0)
-        self.processing_side_grid_layout.addWidget(revert_label, 3, 0)
-        self.processing_side_grid_layout.addWidget(revert_button, 3, 1)
+        self.processing_side_grid_layout.addWidget(self.processing_minimap_image_label, 0, 0)
+        self.processing_side_grid_layout.addWidget(circles_label, 1, 0)
+        self.processing_side_grid_layout.addWidget(circles_button, 1, 1)
+        self.processing_side_grid_layout.addWidget(circle_slider_label, 2, 0)
+        self.processing_side_grid_layout.addWidget(self.circle_slider, 3, 0)
         self.processing_side_grid_layout.addWidget(num_of_circles_label, 4, 0)
         self.processing_side_grid_layout.addWidget(self.circles_count_label, 4, 1)
         self.processing_side_grid_layout.setRowStretch(7,10)
@@ -306,12 +316,14 @@ class MainWindow(QMainWindow):
             self.side_menu_side_selected = self.dockWidgetArea(self.acquisition_side_menu)
             self.removeDockWidget(self.acquisition_side_menu)
             self.createProcessingSideMenu()
+            self.update_processing_minimap()
             self.main_tab_selected = False
             self.find_circles()
         else:
             self.side_menu_side_selected = self.dockWidgetArea(self.processing_side_menu)
             self.removeDockWidget(self.processing_side_menu)
             self.createAcquisitionSideMenu()
+            self.update_small_image()
             self.main_tab_selected = True
 
 
@@ -359,6 +371,7 @@ class MainWindow(QMainWindow):
             self.big_image_label.image = QImage(self.image_path)
             self.big_image_label.original_image = self.big_image_label.image
             self.small_image_label.image = QImage(self.image_path)
+            self.processing_minimap_image_label.image = QImage(self.image_path)
             # self.small_image_label.original_image = self.small_image_label.image
 
             self.save_original_image_pixmap()
@@ -474,12 +487,21 @@ class MainWindow(QMainWindow):
         minimap_viewport_y_position = int((vertical_scrollbar_value / total_height) * height)
         minimap_viewport_x_position = int((horizontal_scrollbar_value / total_width) * width)
         cv.rectangle(viewport_copy, (minimap_viewport_x_position, minimap_viewport_y_position), (minimap_viewport_x_position + minimap_viewport_width, minimap_viewport_y_position + minimap_viewport_height), (0,255,0), 10)
-        height, width, channel = viewport_copy.shape
-        bytesPerLine = 3 * width
         self.small_image_label.image = QImage(viewport_copy.data, width, height, bytesPerLine, QImage.Format.Format_RGB888)
         pixmap = QPixmap().fromImage(self.small_image_label.image)
         resized_pixmap = pixmap.scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio)
         self.small_image_label.setPixmap(resized_pixmap)
+
+
+    def update_processing_minimap(self):
+        viewport_copy = self.img.copy()
+        height, width, channel = viewport_copy.shape
+        bytesPerLine = 3 * width
+        cv.rectangle(viewport_copy, (self.region_x, self.region_y), (self.region_x + self.region_width, self.region_y + self.region_height), (0,255,0), 10)
+        self.processing_minimap_image_label.image = QImage(viewport_copy.data, width, height, bytesPerLine, QImage.Format.Format_RGB888)
+        pixmap = QPixmap().fromImage(self.processing_minimap_image_label.image)
+        resized_pixmap = pixmap.scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio)
+        self.processing_minimap_image_label.setPixmap(resized_pixmap)
 
 
     # function to process whole image into process tab
@@ -496,6 +518,7 @@ class MainWindow(QMainWindow):
             random_index = np.random.randint(0, len(self.regions))
             self.region_img = self.regions[random_index]
             self.save_cv_region_image_pixmap()
+            self.update_processing_minimap()
 
 
     # function that gets all regions of interest
@@ -531,6 +554,13 @@ class MainWindow(QMainWindow):
         resized_pixmap = pixmap.scaled(self.acquisition_side_menu.width(), self.acquisition_side_menu.width(), Qt.AspectRatioMode.KeepAspectRatio)
         self.small_image_label.setPixmap(resized_pixmap)
         self.small_image_label.resize(self.small_image_label.pixmap().size())
+
+    
+    def save_processing_minimap_pixmap(self):
+        pixmap = QPixmap().fromImage(self.processing_minimap_image_label.image)
+        resized_pixmap = pixmap.scaled(self.processing_side_menu.width(), self.processing_side_menu.width(), Qt.AspectRatioMode.KeepAspectRatio)
+        self.processing_minimap_image_label.setPixmap(resized_pixmap)
+        self.processing_minimap_image_label.resize(self.processing_minimap_image_label.pixmap().size())
 
 
     def save_cv_region_image_pixmap(self):
@@ -621,6 +651,7 @@ class MainWindow(QMainWindow):
                     self.save_cv_region_image_pixmap()
                 else:
                     self.save_ski_image_as_pixmap()
+                self.update_processing_minimap()
 
 
     # function that chooses whether to crop image or select region
@@ -720,6 +751,10 @@ class MainWindow(QMainWindow):
             for i in range(len(self.coordinates)):
                 if self.pixel_x > self.coordinates[i][0] and self.pixel_x < (self.coordinates[i][0] + self.coordinates[i][2]) and self.pixel_y > self.coordinates[i][1] and self.pixel_y < (self.coordinates[i][1] + self.coordinates[i][3]):
                     self.region_img = self.regions[i]
+                    self.region_x = self.coordinates[i][0]
+                    self.region_y = self.coordinates[i][1]
+                    self.region_width = self.coordinates[i][2]
+                    self.region_height = self.coordinates[i][3]
                     self.save_cv_region_image_pixmap()
 
                     

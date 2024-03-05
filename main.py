@@ -52,6 +52,8 @@ class MainWindow(QMainWindow):
         self.region_y = 0
         self.region_width = 0
         self.region_height = 0
+        self.region_centre_x = 0
+        self.region_centre_y = 0
         self.processing_minimap_image_label = QLabel(self)
         self.processing_minimap_image_label.image = QImage()
 
@@ -290,7 +292,10 @@ class MainWindow(QMainWindow):
 
         # create a label to get coordinates of the centre
         coordinates_label = QLabel("Coordinates of centre")
-        self.coordinates_value = QLabel(str(self.coordinates))
+        self.coord_x_label = QLabel("X: ")
+        self.coord_x_value = QLabel(str(self.region_centre_x))
+        self.coord_y_label = QLabel("Y: ")
+        self.coord_y_value = QLabel(str(self.region_centre_y))
 
 
         self.processing_side_grid_layout = QGridLayout()
@@ -301,7 +306,12 @@ class MainWindow(QMainWindow):
         self.processing_side_grid_layout.addWidget(self.circle_slider, 3, 0)
         self.processing_side_grid_layout.addWidget(num_of_circles_label, 4, 0)
         self.processing_side_grid_layout.addWidget(self.circles_count_label, 4, 1)
-        self.processing_side_grid_layout.setRowStretch(7,10)
+        self.processing_side_grid_layout.addWidget(coordinates_label, 5, 0)
+        self.processing_side_grid_layout.addWidget(self.coord_x_label, 6, 0)
+        self.processing_side_grid_layout.addWidget(self.coord_x_value, 6, 1)
+        self.processing_side_grid_layout.addWidget(self.coord_y_label, 7, 0)
+        self.processing_side_grid_layout.addWidget(self.coord_y_value, 7, 1)
+        self.processing_side_grid_layout.setRowStretch(10,10)
         container = QWidget()
         container.setLayout(self.processing_side_grid_layout)
         self.processing_side_menu.setWidget(container)
@@ -317,6 +327,7 @@ class MainWindow(QMainWindow):
             self.removeDockWidget(self.acquisition_side_menu)
             self.createProcessingSideMenu()
             self.update_processing_minimap()
+            self.update_coordinates()
             self.main_tab_selected = False
             self.find_circles()
         else:
@@ -464,6 +475,8 @@ class MainWindow(QMainWindow):
 
 
     def update_small_image(self):
+        if self.big_image_label.image.isNull():
+            return
         viewport_copy = self.img.copy()
         height, width, channel = viewport_copy.shape
         bytesPerLine = 3 * width
@@ -494,14 +507,15 @@ class MainWindow(QMainWindow):
 
 
     def update_processing_minimap(self):
-        viewport_copy = self.img.copy()
-        height, width, channel = viewport_copy.shape
-        bytesPerLine = 3 * width
-        cv.rectangle(viewport_copy, (self.region_x, self.region_y), (self.region_x + self.region_width, self.region_y + self.region_height), (0,255,0), 10)
-        self.processing_minimap_image_label.image = QImage(viewport_copy.data, width, height, bytesPerLine, QImage.Format.Format_RGB888)
-        pixmap = QPixmap().fromImage(self.processing_minimap_image_label.image)
-        resized_pixmap = pixmap.scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio)
-        self.processing_minimap_image_label.setPixmap(resized_pixmap)
+        if self.region_img is not None:
+            viewport_copy = self.img.copy()
+            height, width, channel = viewport_copy.shape
+            bytesPerLine = 3 * width
+            cv.rectangle(viewport_copy, (self.region_x, self.region_y), (self.region_x + self.region_width, self.region_y + self.region_height), (0,255,0), 10)
+            self.processing_minimap_image_label.image = QImage(viewport_copy.data, width, height, bytesPerLine, QImage.Format.Format_RGB888)
+            pixmap = QPixmap().fromImage(self.processing_minimap_image_label.image)
+            resized_pixmap = pixmap.scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio)
+            self.processing_minimap_image_label.setPixmap(resized_pixmap)
 
 
     # function to process whole image into process tab
@@ -517,6 +531,10 @@ class MainWindow(QMainWindow):
             self.find_all_regions()
             random_index = np.random.randint(0, len(self.regions))
             self.region_img = self.regions[random_index]
+            self.region_x = self.coordinates[random_index][0]
+            self.region_y = self.coordinates[random_index][1]
+            self.region_width = self.coordinates[random_index][2]
+            self.region_height = self.coordinates[random_index][3]
             self.save_cv_region_image_pixmap()
             self.update_processing_minimap()
 
@@ -731,6 +749,15 @@ class MainWindow(QMainWindow):
             print(self.original_pixel_x, self.original_pixel_y, self.final_pixel_x, self.final_pixel_y)
             self.region_img = self.region_img[self.original_pixel_y:self.final_pixel_y, self.original_pixel_x:self.final_pixel_x]
             self.save_cv_region_image_pixmap()
+
+
+    def update_coordinates(self):
+        if self.region_img is not None:
+            self.cv_width
+            self.region_centre_x = self.region_x + (self.region_width / 2)
+            self.region_centre_y = self.region_y + (self.region_height / 2)
+            self.coord_x_value.setText(str(self.region_centre_x))
+            self.coord_y_value.setText(str(self.region_centre_y))
 
 
     # function to get position of where user pressed and show this square

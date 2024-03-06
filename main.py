@@ -436,9 +436,11 @@ class MainWindow(QMainWindow):
                     box = np.int0(box)
                     cv.drawContours(self.img_copy, [box], 0, (0,0,255), 2)
                     self.areas.append(area)
-                    coord = [x,y,w,h]
+                    coord = [x,y,w,h,area]
                     self.coordinates.append(coord)
                     cv.rectangle(self.img_copy, (x,y), (x+w, y+h), (0,255,0), 2)
+
+            self.coordinates = sorted(self.coordinates, key=lambda x: x[4])
             
             self.max_index = np.argmax(self.areas)
             self.max_value = self.areas[self.max_index]
@@ -783,6 +785,7 @@ class MainWindow(QMainWindow):
                     self.region_width = self.coordinates[i][2]
                     self.region_height = self.coordinates[i][3]
                     self.save_cv_region_image_pixmap()
+                    break
 
                     
 

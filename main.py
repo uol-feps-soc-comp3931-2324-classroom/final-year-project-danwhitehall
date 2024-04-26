@@ -3,14 +3,15 @@ import sys
 from PyQt6.QtWidgets import QToolBar
 import cv2 as cv
 import skimage as ski
-from skimage import img_as_ubyte
+from skimage import img_as_ubyte, io, color, filters, morphology, feature, measure
 import matplotlib.pyplot as plt
 import numpy as np
 from PyQt6.QtCore import Qt, QRect, QSize
 from PyQt6.QtWidgets import *
-from PyQt6.QtGui import QPixmap, QAction, QIcon, QImage, QPalette, QPainter
-# from PyQt6.sip import voidptr
+from PyQt6.QtGui import QPixmap, QAction, QIcon, QImage, QPalette, QPainter, QPen, QColor
 from file_info import fileInfo
+# time used to test time for quantitative analysis
+import time
 
 
 # main window class
@@ -26,7 +27,6 @@ class MainWindow(QMainWindow):
         self.setProperties()
         self.createImageLabel()
         self.createAcquisitionSideMenu()
-        # self.createProcessingSideMenu()
         self.createInfoBar()
         self.createToolBar()
 
@@ -54,6 +54,8 @@ class MainWindow(QMainWindow):
         self.region_height = 0
         self.region_centre_x = 0
         self.region_centre_y = 0
+        self.average_distance = 0
+        self.clustering_coefficient = 0
         self.processing_minimap_image_label = QLabel(self)
         self.processing_minimap_image_label.image = QImage()
 
@@ -62,10 +64,10 @@ class MainWindow(QMainWindow):
     def createImageLabel(self):
         self.tabs = QTabWidget(self)
 
+        # add a label for the main image
         self.big_image_label = QLabel(self)
         self.big_image_label.image = QImage()
         self.big_image_label.original_image = self.big_image_label.image
-
         self.big_image_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.big_image_label.setScaledContents(True)
         self.big_image_label.setPixmap(QPixmap().fromImage(self.big_image_label.image))
@@ -81,11 +83,11 @@ class MainWindow(QMainWindow):
 
         ##########################################################
 
+        # add a label for the region image
         self.region_image_label = QLabel(self)
         self.region_image_label.image = QImage()
         self.region_image_label.original_image = self.region_image_label.image
         self.region_image_label.rubber_band = QRubberBand(QRubberBand.Shape.Rectangle, self)
-
         self.region_image_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.region_image_label.setScaledContents(True)
         self.region_image_label.setPixmap(QPixmap().fromImage(self.region_image_label.image))
@@ -99,12 +101,10 @@ class MainWindow(QMainWindow):
         self.scroll_area_region.setWidget(self.region_image_label)
         self.visible = self.scroll_area_region.visibleRegion()
 
+        # add the two tabs
         self.tabs.addTab(self.scroll_area, "Main Image")
         self.tabs.addTab(self.scroll_area_region, "Region Image")
-
-
         self.setCentralWidget(self.tabs)
-
         self.tabs.currentChanged.connect(self.tabChanged)
 
         # if user has clicked on the main image
@@ -126,19 +126,22 @@ class MainWindow(QMainWindow):
     def createInfoBar(self):
         menu = self.menuBar()
 
+        # add an open file button
         self.open_file = QAction("Open File", self)
         self.open_file.triggered.connect(self.open_file_button_click)
 
+        # add a save file button
         self.save_file = QAction("Save File", self)
         self.save_file.triggered.connect(self.save_file_button_click)
         self.save_file.setEnabled(False)
 
+        # add the buttons to the file dropdown
         file_menu = menu.addMenu("File")
         file_menu.addAction(self.open_file)
         file_menu.addAction(self.save_file)
 
-
-        view_menu = menu.addMenu("View")
+        # add a view menu
+        # view_menu = menu.addMenu("View")
         # view_menu.addAction(self.toggle_acquisition_menu)
         # view_menu.addAction(self.toggle_processing_menu)
 
@@ -159,20 +162,22 @@ class MainWindow(QMainWindow):
         open_file_button.triggered.connect(self.open_file_button_click)
         toolbar.addAction(open_file_button)
 
+        # add a zoom in button
         zoom_in_button = QAction("Zoom In", self)
         zoom_in_button.setStatusTip("Zoom in")
         zoom_in_button.triggered.connect(self.zoom_in_button_click)
         toolbar.addAction(zoom_in_button)
 
+        # add a zoom out button
         zoom_out_button = QAction("Zoom Out", self)
         zoom_out_button.setStatusTip("Zoom out")
         zoom_out_button.triggered.connect(self.zoom_out_button_click)
         toolbar.addAction(zoom_out_button)
 
+        # add a crop button
         self.crop_button = QAction("Crop", self)
         self.crop_button.setStatusTip("Crop image")
         self.crop_button.setCheckable(True)
-        # self.crop_button.triggered.connect(self.crop_image_button_click)
         toolbar.addAction(self.crop_button)
 
         # set the status bar
@@ -186,16 +191,13 @@ class MainWindow(QMainWindow):
         self.acquisition_side_menu.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         self.acquisition_side_menu.setMinimumWidth(200)
 
+        # create a label for the minimap
         self.small_image_label = QLabel(self)
         self.small_image_label.image = QImage()
-        # self.small_image_label.original_image = self.small_image_label.image
         self.small_image_label.rubber_band = QRubberBand(QRubberBand.Shape.Rectangle, self)
-
-        # self.small_image_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.small_image_label.setScaledContents(True)
         self.small_image_label.setPixmap(QPixmap().fromImage(self.small_image_label.image))
         self.small_image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        # self.small_image_label.resize(100, 100)
 
         # create a label for find areas button
         toggle_areas_label = QLabel("Toggle squares")
@@ -248,16 +250,17 @@ class MainWindow(QMainWindow):
         self.acquisition_side_grid_layout.addWidget(process_whole_image_button, 6, 1)
         self.acquisition_side_grid_layout.setRowStretch(10,10)
     
+        # create a container for the grid layout
         container = QWidget()
         container.setLayout(self.acquisition_side_grid_layout)
-
         self.acquisition_side_menu.setWidget(container)
 
+        # add the dock widget to the main window
         self.addDockWidget(self.side_menu_side_selected, self.acquisition_side_menu)
-
         self.toggle_acquisition_menu = self.acquisition_side_menu.toggleViewAction()
 
     
+    # create a side menu for processing image
     def createProcessingSideMenu(self):
         self.processing_side_menu = QDockWidget("Data Processing Side Menu")
         self.processing_side_menu.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
@@ -297,7 +300,28 @@ class MainWindow(QMainWindow):
         self.coord_y_label = QLabel("Y: ")
         self.coord_y_value = QLabel(str(self.region_centre_y))
 
+        # create a label to get width and height of region
+        width_height_label = QLabel("Width and height of region")
+        self.width_label = QLabel("Width: ")
+        self.width_value = QLabel(str(self.region_width))
+        self.height_label = QLabel("Height: ")
+        self.height_value = QLabel(str(self.region_height))
 
+        # create a button to claculate average distance and clustering coefficient
+        calculate_button = QToolButton(self)
+        calculate_button.setText("Calculate below")
+        calculate_button.setToolTip("Calculate average distance and clustering coefficient")
+        calculate_button.clicked.connect(self.save_processing_calculations)
+
+        # create label for average distance between circles
+        average_distance_label = QLabel("Average distance: ")
+        self.average_distance_label = QLabel(str(self.average_distance))
+
+        # create a label for clustering coefficient
+        clustering_coefficient_label = QLabel("Clustering coefficient: ")
+        self.clustering_coefficient_label = QLabel(str(self.clustering_coefficient))
+
+        # create a grid layout for the side menu and add all widgets
         self.processing_side_grid_layout = QGridLayout()
         self.processing_side_grid_layout.addWidget(self.processing_minimap_image_label, 0, 0)
         self.processing_side_grid_layout.addWidget(circles_label, 1, 0)
@@ -311,23 +335,33 @@ class MainWindow(QMainWindow):
         self.processing_side_grid_layout.addWidget(self.coord_x_value, 6, 1)
         self.processing_side_grid_layout.addWidget(self.coord_y_label, 7, 0)
         self.processing_side_grid_layout.addWidget(self.coord_y_value, 7, 1)
-        self.processing_side_grid_layout.setRowStretch(10,10)
+        self.processing_side_grid_layout.addWidget(width_height_label, 8, 0)
+        self.processing_side_grid_layout.addWidget(self.width_label, 9, 0)
+        self.processing_side_grid_layout.addWidget(self.width_value, 9, 1)
+        self.processing_side_grid_layout.addWidget(self.height_label, 10, 0)
+        self.processing_side_grid_layout.addWidget(self.height_value, 10, 1)
+        self.processing_side_grid_layout.addWidget(calculate_button, 11, 0)
+        self.processing_side_grid_layout.addWidget(average_distance_label, 12, 0)
+        self.processing_side_grid_layout.addWidget(self.average_distance_label, 12, 1)
+        self.processing_side_grid_layout.addWidget(clustering_coefficient_label, 13, 0)
+        self.processing_side_grid_layout.addWidget(self.clustering_coefficient_label, 13, 1)
+        self.processing_side_grid_layout.setRowStretch(20, 10)
         container = QWidget()
         container.setLayout(self.processing_side_grid_layout)
         self.processing_side_menu.setWidget(container)
 
         self.addDockWidget(self.side_menu_side_selected, self.processing_side_menu)
-
         self.toggle_processing_menu = self.processing_side_menu.toggleViewAction()
 
 
+    # function to chage the side menus when tab is changed
     def tabChanged(self, index):
         if self.main_tab_selected == True:
             self.side_menu_side_selected = self.dockWidgetArea(self.acquisition_side_menu)
             self.removeDockWidget(self.acquisition_side_menu)
             self.createProcessingSideMenu()
             self.update_processing_minimap()
-            self.update_coordinates()
+            self.update_coordinates_and_dimensions()
             self.main_tab_selected = False
             self.find_circles()
         else:
@@ -338,29 +372,39 @@ class MainWindow(QMainWindow):
             self.main_tab_selected = True
 
 
+    # function used when user toggles select squares button
     def toggle_select_region(self):
         if self.select_checkbox.isChecked():
             self.select_region_checked = True
         else:
             self.select_region_checked = False
 
-        
+    
+    # function to reset area slider
     def reset_area_slider(self):
         self.area_slider.setValue(0)
 
 
+    # function to update area slider
     def update_area_slider(self):
         self.area_slider.setRange(0, int(self.max_value)-1)
         self.area_slider.setTickInterval(int((self.max_value)/10))
-        # self.acquisition_side_grid_layout.addWidget(self.area_slider, 2, 0, 1, 0)
 
 
     # function to save the file
     def save_file_button_click(self):
-        if not self.big_image_label.image.isNull():
+        if not self.region_image_label.image.isNull():
             image_file, _ = QFileDialog.getSaveFileName(self, "Save Image", "", "PNG(*.png);;JPEG(*.jpg *.jpeg);;Tiff(*.tiff *.tif);;All Files(*.*)")
             if image_file:
-                self.big_image_label.image.save(image_file)
+                try:
+                    pixmap = self.region_image_label.pixmap()
+                    pixmap.save(image_file)
+                    print("Image saved successfully!")
+                except Exception as e:
+                    print("Error saving image:", e)
+        else:
+            print("No image to save")
+
 
     # function when user wants to open file
     def open_file_button_click(self):
@@ -383,8 +427,8 @@ class MainWindow(QMainWindow):
             self.big_image_label.original_image = self.big_image_label.image
             self.small_image_label.image = QImage(self.image_path)
             self.processing_minimap_image_label.image = QImage(self.image_path)
-            # self.small_image_label.original_image = self.small_image_label.image
 
+            # save the image to both main image and minimap
             self.save_original_image_pixmap()
             self.save_small_image_pixmap()
        
@@ -408,20 +452,22 @@ class MainWindow(QMainWindow):
             height, width, channel = self.img_copy.shape
             self.cv_width = width
             self.cv_height = height
+
+            # preprocess the image
             gray = cv.cvtColor(self.img_copy, cv.COLOR_BGR2GRAY)
             blur = cv.medianBlur(gray, 5)
-
             sharpen_kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
             sharpen = cv.filter2D(blur, -1, sharpen_kernel)
 
+            # find the edges
             canny = cv.Canny(sharpen, 0, 255, 500)            
 
-            ret, thresh = cv.threshold(gray, 127, 255, 0)
+            # ret, thresh = cv.threshold(gray, 127, 255, 0)
             
             # can do either canny or threshhold for contours
             # but I prefer to use canny as there are more larger rectangles
             self.contours, hierarchy = cv.findContours(canny, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
-            thresh_contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+            # thresh_contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
             
             # draw rectangles based on slider bar
             self.areas = []
@@ -429,7 +475,6 @@ class MainWindow(QMainWindow):
             for cnt in self.contours: 
                 x,y,w,h = cv.boundingRect(cnt)
                 area = w*h
-                # area = cv.contourArea(cnt)
                 if area > int(self.area_slider.value()):
                     rect = cv.minAreaRect(cnt)
                     box = cv.boxPoints(rect)
@@ -439,9 +484,9 @@ class MainWindow(QMainWindow):
                     coord = [x,y,w,h,area]
                     self.coordinates.append(coord)
                     cv.rectangle(self.img_copy, (x,y), (x+w, y+h), (0,255,0), 2)
-
+                    
+            # sort the areas and coordinates
             self.coordinates = sorted(self.coordinates, key=lambda x: x[4])
-            
             self.max_index = np.argmax(self.areas)
             self.max_value = self.areas[self.max_index]
 
@@ -450,32 +495,115 @@ class MainWindow(QMainWindow):
                 self.save_cv_image_pixmap()
             self.update_area_slider()
 
+
+    # function to find connected components
     def connected_components(self, image, connectivity=2):
         labeled_image, count = ski.measure.label(self.binary_mask,
                                                     connectivity=connectivity, return_num=True)
         return labeled_image, count
+    
 
-
+    # this method finds more variety of radius but when two circles
+    # next to each other they are merged into one circle
     def find_circles(self):
         if self.region_img is not None:
-            grey_image = ski.color.rgb2gray(self.region_img)
-            blurred = ski.filters.gaussian(grey_image, sigma=1.0)
+            # preprocess image
+            gray_image = color.rgb2gray(self.region_img)
+
+            # get binary mask
             t = float(self.circle_slider.value())/100
-            self.binary_mask = blurred < t
-            # fig, ax = plt.subplots()
-            # plt.imshow(self.binary_mask, cmap="gray")
-            selection = ~self.region_img.copy()
-            selection[~self.binary_mask] = 0
-            self.components_image, self.circles_count = self.connected_components(selection, connectivity=2)
-            self.update_circle_count()
-            self.ski_image = self.binary_mask
+            self.binary_mask = gray_image < t
+            self.binary_mask = morphology.binary_erosion(self.binary_mask, morphology.disk(0))
+
+            # find circles
+            labeled_mask = measure.label(self.binary_mask)
+            self.circle_regions = measure.regionprops(labeled_mask)
+
             if self.circles_pressed_count % 2 == 1: 
-                self.save_ski_image_as_pixmap()
+                self.save_image_with_circles()
+
+
+    # save the region image with circles drawn on it
+    def save_image_with_circles(self):
+        if self.region_img is not None:
+            region_bytes = self.region_img.tobytes()
+            height, width, channel = self.region_img.shape
+            bytesPerLine = 3 * width
+            self.region_image_label.image = QImage(region_bytes, width, height, bytesPerLine, QImage.Format.Format_RGB888)
+            pixmap = QPixmap().fromImage(self.region_image_label.image)
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+            # draw the circles
+            for region in self.circle_regions:
+                centroid_y, centroid_x = region.centroid
+                radius = np.sqrt(region.area / np.pi)
+                painter.setPen(QPen(QColor("red"), 2))
+                painter.drawEllipse(int(centroid_x - radius), int(centroid_y - radius), int(2 * radius), int(2 * radius))
             
+            self.circles_count = len(self.circle_regions)
+            self.update_circle_count()
+            painter.end()
+            resized_pixmap = pixmap.scaled(self.scroll_area_region.size() * self.zoom_factor_process, Qt.AspectRatioMode.KeepAspectRatio)
+
+            # Display the QPixmap
+            self.region_image_label.setPixmap(resized_pixmap)
+            self.region_image_label.resize(self.region_image_label.pixmap().size())
+
+
+    # save the calculations and show to user
+    def save_processing_calculations(self):
+        if self.region_img is not None:
+            distances = []
+            for i in range(len(self.circle_regions)):
+                for j in range(i+1, len(self.circle_regions)):
+                    distance = np.sqrt((self.circle_regions[i].centroid[0] - self.circle_regions[j].centroid[0])**2 +
+                                       (self.circle_regions[i].centroid[1] - self.circle_regions[j].centroid[1])**2)
+                    distances.append(distance)
+            self.average_distance = np.mean(distances)
+
+            self.clustering_coefficient = (self.circles_count * self.average_distance) / (2 * self.region_width * self.region_height)
+            self.average_distance_label.setText(str(self.average_distance))
+            self.clustering_coefficient_label.setText(str(self.clustering_coefficient))
+                
+
+    # gets each specific circle but radii is one of 4 options
+    # NOTE - this is method 2 used in chapter 3.3.2
+    # def find_circles3(self):
+    #     if self.region_img is not None:
+    #         gray_image = color.rgb2gray(self.region_img)
+    #         t = float(self.circle_slider.value())/100
+    #         self.binary_mask = gray_image < t
+    #         self.binary_mask = morphology.binary_closing(self.binary_mask, morphology.disk(3))
+    #         blobs = feature.blob_log(self.binary_mask, min_sigma=5, max_sigma=30, threshold=0.1)
+    #         centers = blobs[:, :2]
+    #         radii = blobs[:, 2] * np.sqrt(2)
+    #         self.circles_count = len(centers)
+
+    #         distances = []
+    #         for i in range(len(centers)):
+    #             for j in range (i+1, len(centers)):
+    #                 distance = np.sqrt((centers[i][0] - centers[j][0])**2 + (centers[i][1] - centers[j][1])**2)
+    #                 distances.append(distance)
+    #         self.average_distance = np.mean(distances)
+    #         self.clustering_coefficient = (self.circles_count * self.average_distance) / (2 * self.region_width * self.region_height)
+
+    #         # Plot the original image with detected circles
+    #         fig, ax = plt.subplots()
+    #         ax.imshow(self.region_img, cmap='gray')
+    #         for center, radius in zip(centers, radii):
+    #             circle = plt.Circle((center[1], center[0]), radius, color='red', fill=False)
+    #             ax.add_patch(circle)
+    #         # Display the plot
+    #         plt.show()
+
+        
+    # update the number of elements
     def update_circle_count(self):
         self.circles_count_label.setText(str(self.circles_count))
 
 
+    # update acquisition minimap
     def update_small_image(self):
         if self.big_image_label.image.isNull():
             return
@@ -508,6 +636,7 @@ class MainWindow(QMainWindow):
         self.small_image_label.setPixmap(resized_pixmap)
 
 
+    # update processing minimap
     def update_processing_minimap(self):
         if self.region_img is not None:
             viewport_copy = self.img.copy()
@@ -524,7 +653,13 @@ class MainWindow(QMainWindow):
     def process_whole_image(self):
         if not self.big_image_label.image.isNull():
             self.region_img = self.img
+            self.region_x = 0
+            self.region_y = 0
+            self.region_width = self.cv_width
+            self.region_height = self.cv_height
+            
             self.save_cv_region_image_pixmap()
+            self.update_processing_minimap()
 
                 
     # function to find a random region of interest
@@ -569,13 +704,15 @@ class MainWindow(QMainWindow):
         self.big_image_label.resize(self.big_image_label.pixmap().size())
 
 
+    # display updated acquisition minimap
     def save_small_image_pixmap(self):
         pixmap = QPixmap().fromImage(self.small_image_label.image)
         resized_pixmap = pixmap.scaled(self.acquisition_side_menu.width(), self.acquisition_side_menu.width(), Qt.AspectRatioMode.KeepAspectRatio)
         self.small_image_label.setPixmap(resized_pixmap)
         self.small_image_label.resize(self.small_image_label.pixmap().size())
 
-    
+
+    # display updated processing minimap    
     def save_processing_minimap_pixmap(self):
         pixmap = QPixmap().fromImage(self.processing_minimap_image_label.image)
         resized_pixmap = pixmap.scaled(self.processing_side_menu.width(), self.processing_side_menu.width(), Qt.AspectRatioMode.KeepAspectRatio)
@@ -583,38 +720,20 @@ class MainWindow(QMainWindow):
         self.processing_minimap_image_label.resize(self.processing_minimap_image_label.pixmap().size())
 
 
+    # save region image
     def save_cv_region_image_pixmap(self):
         if self.region_img is not None:
             region_bytes = self.region_img.tobytes()
             height, width, channel = self.region_img.shape
             bytesPerLine = 3 * width
 
-            q_image = QImage(region_bytes, width, height, bytesPerLine, QImage.Format.Format_RGB888)
-            pixmap = QPixmap().fromImage(q_image)
+            self.region_image_label.image = QImage(region_bytes, width, height, bytesPerLine, QImage.Format.Format_RGB888)
+            pixmap = QPixmap().fromImage(self.region_image_label.image)
             resized_pixmap = pixmap.scaled(self.scroll_area_region.size() * self.zoom_factor_process, Qt.AspectRatioMode.KeepAspectRatio)
 
             self.region_image_label.setPixmap(resized_pixmap)
             self.region_image_label.resize(self.region_image_label.pixmap().size())
             self.tabs.setCurrentIndex(1)
-
-
-    def save_ski_image_as_pixmap(self):        
-        if self.region_img is not None:
-            # Convert to uint8
-            self.ski_image = img_as_ubyte(self.ski_image)
-
-            # Create QImage from numpy array
-            img = QImage(self.ski_image.data, self.ski_image.shape[1], self.ski_image.shape[0],
-                        self.ski_image.strides[0], QImage.Format.Format_Grayscale8)  # Try a different format
-
-            # Create QPixmap from QImage
-            pixmap = QPixmap.fromImage(img)
-            resized_pixmap = pixmap.scaled(self.scroll_area_region.size() * self.zoom_factor_process, Qt.AspectRatioMode.KeepAspectRatio)
-
-            # Display the QPixmap
-            self.region_image_label.setPixmap(resized_pixmap)
-            self.region_image_label.resize(self.region_image_label.pixmap().size())
-
 
 
     # toggle screen to show squares on and off        
@@ -628,13 +747,14 @@ class MainWindow(QMainWindow):
                 self.save_cv_image_pixmap()
 
     
+    # toggle screen to show circles on and off
     def toggle_circles_pressed(self):
         if self.region_img is not None:
             self.circles_pressed_count += 1
             if self.circles_pressed_count % 2 == 0:
                 self.save_cv_region_image_pixmap()
             else:
-                self.save_ski_image_as_pixmap()
+                self.save_image_with_circles()
 
     
     # function that zooms image in
@@ -645,7 +765,6 @@ class MainWindow(QMainWindow):
             self.zoom_factor_process *= 1.1
         self.zoom_image()
         
-
 
     # function that zooms image out
     def zoom_out_button_click(self):
@@ -670,7 +789,7 @@ class MainWindow(QMainWindow):
                 if self.circles_pressed_count % 2 == 0:
                     self.save_cv_region_image_pixmap()
                 else:
-                    self.save_ski_image_as_pixmap()
+                    self.save_image_with_circles()
                 self.update_processing_minimap()
 
 
@@ -714,10 +833,13 @@ class MainWindow(QMainWindow):
             self.original_pixel_y = int((self.original_point.y()/self.big_image_label.height()) * self.cv_height)
             self.final_pixel_x = int((self.final_point.x()/self.big_image_label.width()) * self.cv_width)
             self.final_pixel_y = int((self.final_point.y()/self.big_image_label.height()) * self.cv_height)
+            if self.final_pixel_x == self.original_pixel_x or self.final_pixel_y == self.original_pixel_y:
+                return
             self.region_img = self.img[self.original_pixel_y:self.final_pixel_y, self.original_pixel_x:self.final_pixel_x]
             self.save_cv_region_image_pixmap()
 
     
+    # function that recognises start of crop
     def crop_region_image_button_click(self, event):
         if self.crop_button.isChecked():
             if self.region_img is not None:
@@ -727,12 +849,14 @@ class MainWindow(QMainWindow):
                 self.region_image_label.rubber_band.show()
     
 
+    # function that recognises movement of crop
     def crop_region_image_move(self, event):
         if self.crop_button.isChecked():
             if self.region_img is not None:
                 self.region_image_label.rubber_band.setGeometry(QRect(self.original_point, event.pos()).normalized())
 
 
+    # function that recognises end of crop
     def crop_region_image_release(self, event):
         if self.crop_button.isChecked():
             if self.region_img is not None:
@@ -753,26 +877,30 @@ class MainWindow(QMainWindow):
             self.save_cv_region_image_pixmap()
 
 
-    def update_coordinates(self):
+    # get coordinate of centre of region and dimensions of region
+    def update_coordinates_and_dimensions(self):
         if self.region_img is not None:
-            self.cv_width
             self.region_centre_x = self.region_x + (self.region_width / 2)
             self.region_centre_y = self.region_y + (self.region_height / 2)
+            self.region_centre_x = self.region_centre_x / self.cv_width
+            self.region_centre_y = self.region_centre_y / self.cv_height
+            self.region_centre_x += -0.5
+            self.region_centre_y = 0.5 - self.region_centre_y
             self.coord_x_value.setText(str(self.region_centre_x))
             self.coord_y_value.setText(str(self.region_centre_y))
+            self.width_value.setText(str(self.region_width))
+            self.height_value.setText(str(self.region_height))
 
 
     # function to get position of where user pressed and show this square
     def get_pixel(self, event):
         # get x and y position of where user clicked
-
         x = event.pos().x()
         y = event.pos().y()
 
         # get x, y position in relation to size of image
         self.pixel_x = int((x/self.big_image_label.width()) * self.cv_width)
         self.pixel_y = int((y/self.big_image_label.height()) * self.cv_height)
-
 
         if self.select_region_checked == True:
             self.find_all_regions()
@@ -788,15 +916,7 @@ class MainWindow(QMainWindow):
                     break
 
                     
-
-
-    #TODO: add way to use scroll to zoom in out
-    #TODO: finish top and side menu   
-    #TODO: FIX SAVING IMAGE
-    #TODO: ADD MORE PROCESSING STUFF - AREA, ETC
-    #TODO: ADD MORE COMMENTS
-    #TODO: MAYBE SLIDER CHANGES DEPENDING ON WHAT USER WANTS
-    #TODO: MAKE CODE NEATER
+    #TODO: add width and height of image to processing menu
 
     
 
